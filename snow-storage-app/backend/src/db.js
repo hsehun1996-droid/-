@@ -1,0 +1,59 @@
+const path = require("path");
+const fs = require("fs");
+const Database = require("better-sqlite3");
+
+const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, "..", "data");
+if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+
+const DB_PATH = path.join(DATA_DIR, "snow_storage.db");
+const db = new Database(DB_PATH);
+
+db.pragma("journal_mode = WAL");
+db.pragma("foreign_keys = ON");
+
+db.exec(`
+CREATE TABLE IF NOT EXISTS warehouses (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL UNIQUE,
+  location TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS users (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  username TEXT NOT NULL UNIQUE,
+  password_hash TEXT NOT NULL,
+  name TEXT NOT NULL,
+  role TEXT NOT NULL CHECK(role IN ('admin','office','field')),
+  warehouse_id INTEGER REFERENCES warehouses(id) ON DELETE SET NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS items (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL,
+  category TEXT,
+  unit TEXT NOT NULL,
+  min_stock REAL NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS transactions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  client_id TEXT NOT NULL UNIQUE,
+  warehouse_id INTEGER NOT NULL REFERENCES warehouses(id),
+  item_id INTEGER NOT NULL REFERENCES items(id),
+  type TEXT NOT NULL CHECK(type IN ('in','out','adjust')),
+  quantity REAL NOT NULL,
+  delta REAL NOT NULL,
+  memo TEXT,
+  user_id INTEGER REFERENCES users(id),
+  occurred_at TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_tx_wh_item ON transactions(warehouse_id, item_id);
+CREATE INDEX IF NOT EXISTS idx_tx_occurred ON transactions(occurred_at);
+`);
+
+module.exports = db;
