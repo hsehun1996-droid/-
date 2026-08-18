@@ -1,15 +1,23 @@
 const path = require("path");
 const fs = require("fs");
-const Database = require("better-sqlite3");
+
+let DatabaseSync;
+try {
+  ({ DatabaseSync } = require("node:sqlite"));
+} catch (e) {
+  throw new Error(
+    "이 프로그램은 Node.js 내장 SQLite 모듈(node:sqlite)이 필요합니다. Node.js 22.5 이상 버전을 설치한 뒤 다시 실행해주세요. (터미널에 `node -v`로 버전 확인 가능)"
+  );
+}
 
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, "..", "data");
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 
 const DB_PATH = path.join(DATA_DIR, "snow_storage.db");
-const db = new Database(DB_PATH);
+const db = new DatabaseSync(DB_PATH);
 
-db.pragma("journal_mode = WAL");
-db.pragma("foreign_keys = ON");
+db.exec("PRAGMA journal_mode = WAL");
+db.exec("PRAGMA foreign_keys = ON");
 
 db.exec(`
 CREATE TABLE IF NOT EXISTS warehouses (

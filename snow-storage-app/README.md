@@ -4,8 +4,10 @@
 
 ## 구성
 
-- **backend/**: Node.js + Express + SQLite(better-sqlite3) API 서버
+- **backend/**: Node.js + Express + SQLite(Node.js 내장 `node:sqlite` 모듈) API 서버 — 별도 컴파일 도구 없이 `npm install`만으로 설치됩니다
 - **frontend/**: React + Vite 기반 PWA (설치형 웹앱, 오프라인 입력 지원)
+
+> **Node.js 버전**: 22.5 이상 필요 (내장 SQLite 모듈 사용). `node -v`로 확인하세요. 최신 LTS 버전 설치를 권장합니다.
 
 ## 핵심 설계
 
