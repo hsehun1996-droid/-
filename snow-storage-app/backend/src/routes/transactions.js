@@ -56,12 +56,16 @@ function insertTransaction(tx, userId) {
 }
 
 router.get("/", requireAuth, (req, res) => {
-  const { warehouse_id, item_id, type, from, to, limit } = req.query;
+  const { warehouse_id, branch_id, item_id, type, from, to, limit } = req.query;
   const clauses = [];
   const params = [];
   if (warehouse_id) {
     clauses.push("t.warehouse_id = ?");
     params.push(warehouse_id);
+  }
+  if (branch_id) {
+    clauses.push("w.branch_id = ?");
+    params.push(branch_id);
   }
   if (item_id) {
     clauses.push("t.item_id = ?");
@@ -83,9 +87,10 @@ router.get("/", requireAuth, (req, res) => {
   const lim = Math.min(Number(limit) || 200, 1000);
   const rows = db
     .prepare(
-      `SELECT t.*, w.name AS warehouse_name, i.name AS item_name, i.unit AS item_unit, u.name AS user_name
+      `SELECT t.*, b.name AS branch_name, w.name AS warehouse_name, i.name AS item_name, i.unit AS item_unit, u.name AS user_name
        FROM transactions t
        JOIN warehouses w ON w.id = t.warehouse_id
+       JOIN branches b ON b.id = w.branch_id
        JOIN items i ON i.id = t.item_id
        LEFT JOIN users u ON u.id = t.user_id
        ${where}

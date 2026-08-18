@@ -7,6 +7,7 @@ import Dashboard from "./pages/Dashboard.jsx";
 import Stock from "./pages/Stock.jsx";
 import EntryForm from "./pages/EntryForm.jsx";
 import History from "./pages/History.jsx";
+import AdminBranches from "./pages/admin/Branches.jsx";
 import AdminWarehouses from "./pages/admin/Warehouses.jsx";
 import AdminItems from "./pages/admin/Items.jsx";
 import AdminUsers from "./pages/admin/Users.jsx";
@@ -42,6 +43,14 @@ export default function App() {
         <Route path="entry" element={<EntryForm />} />
         <Route path="stock" element={<Stock />} />
         <Route path="history" element={<History />} />
+        <Route
+          path="admin/branches"
+          element={
+            <RequireAuth roles={["admin"]}>
+              <AdminBranches />
+            </RequireAuth>
+          }
+        />
         <Route
           path="admin/warehouses"
           element={

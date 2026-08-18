@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import client from "../api/client.js";
 import { useAuth } from "../context/AuthContext.jsx";
 
@@ -11,19 +11,28 @@ const TYPE_STYLE = {
 
 export default function History() {
   const { user } = useAuth();
+  const isField = user?.role === "field";
+  const [branches, setBranches] = useState([]);
   const [warehouses, setWarehouses] = useState([]);
-  const [filters, setFilters] = useState({ warehouse_id: "", type: "", from: "", to: "" });
+  const [filters, setFilters] = useState({ branch_id: "", warehouse_id: "", type: "", from: "", to: "" });
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    client.get("/warehouses").then((res) => {
-      setWarehouses(res.data);
-      if (user?.role === "field" && user.warehouse_id) {
-        setFilters((f) => ({ ...f, warehouse_id: String(user.warehouse_id) }));
+    Promise.all([client.get("/branches"), client.get("/warehouses")]).then(([branchRes, warehouseRes]) => {
+      setBranches(branchRes.data);
+      setWarehouses(warehouseRes.data);
+      if (isField && user.warehouse_id) {
+        const wh = warehouseRes.data.find((w) => w.id === user.warehouse_id);
+        setFilters((f) => ({ ...f, branch_id: String(wh?.branch_id || ""), warehouse_id: String(user.warehouse_id) }));
       }
     });
   }, [user]);
+
+  const warehousesInBranch = useMemo(
+    () => (filters.branch_id ? warehouses.filter((w) => String(w.branch_id) === filters.branch_id) : warehouses),
+    [warehouses, filters.branch_id]
+  );
 
   useEffect(() => {
     setLoading(true);
@@ -39,15 +48,28 @@ export default function History() {
     <div>
       <h2 className="text-xl font-bold text-slate-800 mb-4">입출고 이력</h2>
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-4">
+        <select
+          className="border border-slate-300 rounded-lg px-3 py-2 bg-white text-sm"
+          value={filters.branch_id}
+          onChange={(e) => setFilters({ ...filters, branch_id: e.target.value, warehouse_id: "" })}
+          disabled={isField}
+        >
+          <option value="">전체 지사</option>
+          {branches.map((b) => (
+            <option key={b.id} value={b.id}>
+              {b.name}
+            </option>
+          ))}
+        </select>
         <select
           className="border border-slate-300 rounded-lg px-3 py-2 bg-white text-sm"
           value={filters.warehouse_id}
           onChange={(e) => setFilters({ ...filters, warehouse_id: e.target.value })}
-          disabled={user?.role === "field"}
+          disabled={isField}
         >
           <option value="">전체 창고</option>
-          {warehouses.map((w) => (
+          {warehousesInBranch.map((w) => (
             <option key={w.id} value={w.id}>
               {w.name}
             </option>
@@ -78,10 +100,11 @@ export default function History() {
       </div>
 
       <div className="bg-white rounded-xl shadow-sm overflow-x-auto">
-        <table className="w-full text-sm min-w-[600px]">
+        <table className="w-full text-sm min-w-[700px]">
           <thead>
             <tr className="text-left text-slate-500 border-b">
               <th className="px-4 py-2">날짜</th>
+              <th className="px-4 py-2">지사</th>
               <th className="px-4 py-2">창고</th>
               <th className="px-4 py-2">품목</th>
               <th className="px-4 py-2">유형</th>
@@ -93,13 +116,13 @@ export default function History() {
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={7} className="px-4 py-6 text-center text-slate-400">
+                <td colSpan={8} className="px-4 py-6 text-center text-slate-400">
                   불러오는 중...
                 </td>
               </tr>
             ) : rows.length === 0 ? (
               <tr>
-                <td colSpan={7} className="px-4 py-6 text-center text-slate-400">
+                <td colSpan={8} className="px-4 py-6 text-center text-slate-400">
                   이력이 없습니다.
                 </td>
               </tr>
@@ -107,6 +130,7 @@ export default function History() {
               rows.map((r) => (
                 <tr key={r.id} className="border-b last:border-0">
                   <td className="px-4 py-2 whitespace-nowrap">{r.occurred_at}</td>
+                  <td className="px-4 py-2">{r.branch_name}</td>
                   <td className="px-4 py-2">{r.warehouse_name}</td>
                   <td className="px-4 py-2">{r.item_name}</td>
                   <td className="px-4 py-2">

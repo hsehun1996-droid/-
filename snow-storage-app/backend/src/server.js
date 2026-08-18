@@ -2,6 +2,7 @@ const express = require("express");
 const cors = require("cors");
 
 const authRoutes = require("./routes/auth");
+const branchRoutes = require("./routes/branches");
 const warehouseRoutes = require("./routes/warehouses");
 const itemRoutes = require("./routes/items");
 const transactionRoutes = require("./routes/transactions");
@@ -16,6 +17,7 @@ app.use(express.json());
 app.get("/api/health", (req, res) => res.json({ ok: true }));
 
 app.use("/api/auth", authRoutes);
+app.use("/api/branches", branchRoutes);
 app.use("/api/warehouses", warehouseRoutes);
 app.use("/api/items", itemRoutes);
 app.use("/api/transactions", transactionRoutes);

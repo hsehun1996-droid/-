@@ -8,6 +8,7 @@ const NAV_ITEMS = [
   { to: "/entry", label: "입출고 등록", roles: ["admin", "office", "field"] },
   { to: "/stock", label: "재고 현황", roles: ["admin", "office", "field"] },
   { to: "/history", label: "이력 조회", roles: ["admin", "office", "field"] },
+  { to: "/admin/branches", label: "지사 관리", roles: ["admin"] },
   { to: "/admin/warehouses", label: "창고 관리", roles: ["admin"] },
   { to: "/admin/items", label: "품목 관리", roles: ["admin"] },
   { to: "/admin/users", label: "사용자 관리", roles: ["admin"] },

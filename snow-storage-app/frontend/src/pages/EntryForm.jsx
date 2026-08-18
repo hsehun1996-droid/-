@@ -15,8 +15,10 @@ function todayStr() {
 
 export default function EntryForm() {
   const { user } = useAuth();
+  const [branches, setBranches] = useState([]);
   const [warehouses, setWarehouses] = useState([]);
   const [items, setItems] = useState([]);
+  const [branchId, setBranchId] = useState("");
   const [warehouseId, setWarehouseId] = useState("");
   const [itemId, setItemId] = useState("");
   const [type, setType] = useState("in");
@@ -27,16 +29,30 @@ export default function EntryForm() {
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
-    client.get("/warehouses").then((res) => {
-      setWarehouses(res.data);
-      const preferred = user?.warehouse_id;
-      setWarehouseId(String(preferred || res.data[0]?.id || ""));
+    Promise.all([client.get("/branches"), client.get("/warehouses")]).then(([branchRes, warehouseRes]) => {
+      setBranches(branchRes.data);
+      setWarehouses(warehouseRes.data);
+      const preferredWarehouse = warehouseRes.data.find((w) => w.id === user?.warehouse_id);
+      const initialBranchId = preferredWarehouse?.branch_id || branchRes.data[0]?.id || "";
+      setBranchId(String(initialBranchId));
+      setWarehouseId(String(preferredWarehouse?.id || ""));
     });
     client.get("/items").then((res) => {
       setItems(res.data);
       setItemId(String(res.data[0]?.id || ""));
     });
   }, [user]);
+
+  const warehousesInBranch = useMemo(
+    () => warehouses.filter((w) => String(w.branch_id) === String(branchId)),
+    [warehouses, branchId]
+  );
+
+  useEffect(() => {
+    if (!warehousesInBranch.some((w) => String(w.id) === warehouseId)) {
+      setWarehouseId(String(warehousesInBranch[0]?.id || ""));
+    }
+  }, [warehousesInBranch, warehouseId]);
 
   const categories = useMemo(() => {
     const map = new Map();
@@ -115,19 +131,35 @@ export default function EntryForm() {
           </div>
         </div>
 
-        <div>
-          <label className="block text-sm font-semibold text-slate-700 mb-2">창고</label>
-          <select
-            className="w-full border border-slate-300 rounded-lg px-3 py-3 text-base bg-white"
-            value={warehouseId}
-            onChange={(e) => setWarehouseId(e.target.value)}
-          >
-            {warehouses.map((w) => (
-              <option key={w.id} value={w.id}>
-                {w.name}
-              </option>
-            ))}
-          </select>
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="block text-sm font-semibold text-slate-700 mb-2">지사</label>
+            <select
+              className="w-full border border-slate-300 rounded-lg px-3 py-3 text-base bg-white"
+              value={branchId}
+              onChange={(e) => setBranchId(e.target.value)}
+            >
+              {branches.map((b) => (
+                <option key={b.id} value={b.id}>
+                  {b.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-semibold text-slate-700 mb-2">창고</label>
+            <select
+              className="w-full border border-slate-300 rounded-lg px-3 py-3 text-base bg-white"
+              value={warehouseId}
+              onChange={(e) => setWarehouseId(e.target.value)}
+            >
+              {warehousesInBranch.map((w) => (
+                <option key={w.id} value={w.id}>
+                  {w.name}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
 
         <div>

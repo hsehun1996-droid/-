@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import client from "../../api/client.js";
 import { roleLabel } from "../../components/Layout.jsx";
 
@@ -18,6 +18,15 @@ export default function AdminUsers() {
     reload();
     client.get("/warehouses").then((res) => setWarehouses(res.data));
   }, []);
+
+  const warehousesByBranch = useMemo(() => {
+    const map = new Map();
+    for (const w of warehouses) {
+      if (!map.has(w.branch_name)) map.set(w.branch_name, []);
+      map.get(w.branch_name).push(w);
+    }
+    return map;
+  }, [warehouses]);
 
   async function handleAdd(e) {
     e.preventDefault();
@@ -96,10 +105,14 @@ export default function AdminUsers() {
             onChange={(e) => setForm({ ...form, warehouse_id: e.target.value })}
           >
             <option value="">-</option>
-            {warehouses.map((w) => (
-              <option key={w.id} value={w.id}>
-                {w.name}
-              </option>
+            {[...warehousesByBranch.entries()].map(([branchName, list]) => (
+              <optgroup key={branchName} label={branchName}>
+                {list.map((w) => (
+                  <option key={w.id} value={w.id}>
+                    {w.name}
+                  </option>
+                ))}
+              </optgroup>
             ))}
           </select>
         </div>
@@ -116,7 +129,12 @@ export default function AdminUsers() {
               </div>
               <div className="text-sm text-slate-500">
                 {roleLabel(u.role)}
-                {u.warehouse_id ? ` · ${warehouses.find((w) => w.id === u.warehouse_id)?.name || ""}` : ""}
+                {u.warehouse_id
+                  ? (() => {
+                      const wh = warehouses.find((w) => w.id === u.warehouse_id);
+                      return wh ? ` · ${wh.branch_name} ${wh.name}` : "";
+                    })()
+                  : ""}
               </div>
             </div>
             <button onClick={() => handleDelete(u.id)} className="text-sm text-red-600 font-medium">
