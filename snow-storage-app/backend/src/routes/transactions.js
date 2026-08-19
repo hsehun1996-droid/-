@@ -87,7 +87,8 @@ router.get("/", requireAuth, (req, res) => {
   const lim = Math.min(Number(limit) || 200, 1000);
   const rows = db
     .prepare(
-      `SELECT t.*, b.name AS branch_name, w.name AS warehouse_name, i.name AS item_name, i.unit AS item_unit, u.name AS user_name
+      `SELECT t.*, b.name AS branch_name, w.name AS warehouse_name,
+              i.category AS item_category, i.name AS item_name, i.unit AS item_unit, u.name AS user_name
        FROM transactions t
        JOIN warehouses w ON w.id = t.warehouse_id
        JOIN branches b ON b.id = w.branch_id

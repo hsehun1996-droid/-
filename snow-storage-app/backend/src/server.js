@@ -7,6 +7,7 @@ const warehouseRoutes = require("./routes/warehouses");
 const itemRoutes = require("./routes/items");
 const transactionRoutes = require("./routes/transactions");
 const stockRoutes = require("./routes/stock");
+const stockTargetRoutes = require("./routes/stock-targets");
 const dashboardRoutes = require("./routes/dashboard");
 const userRoutes = require("./routes/users");
 
@@ -22,6 +23,7 @@ app.use("/api/warehouses", warehouseRoutes);
 app.use("/api/items", itemRoutes);
 app.use("/api/transactions", transactionRoutes);
 app.use("/api/stock", stockRoutes);
+app.use("/api/stock-targets", stockTargetRoutes);
 app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/users", userRoutes);
 

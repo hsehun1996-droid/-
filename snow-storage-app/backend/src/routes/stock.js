@@ -4,7 +4,7 @@ const { requireAuth } = require("../auth");
 
 const router = express.Router();
 
-// 지사 x 창고 x 품목별 현재 재고 = 해당 조합 거래의 delta 합계
+// 지사 x 창고 x 품목(형태)별 현재 재고 = 해당 조합 거래의 delta 합계 (원 단위, 톤 환산 전)
 router.get("/", requireAuth, (req, res) => {
   const { warehouse_id, branch_id } = req.query;
   const clauses = [];
@@ -22,7 +22,7 @@ router.get("/", requireAuth, (req, res) => {
     .prepare(
       `SELECT b.id AS branch_id, b.name AS branch_name,
               w.id AS warehouse_id, w.name AS warehouse_name,
-              i.id AS item_id, i.name AS item_name, i.category, i.unit, i.min_stock,
+              i.id AS item_id, i.name AS item_name, i.category, i.unit, i.to_ton_factor,
               COALESCE(SUM(t.delta), 0) AS quantity
        FROM warehouses w
        JOIN branches b ON b.id = w.branch_id
@@ -36,22 +36,33 @@ router.get("/", requireAuth, (req, res) => {
   res.json(rows);
 });
 
-router.get("/low", requireAuth, (req, res) => {
+// 지사별 품목 카테고리(예: 소금(제설용), 염화칼슘) 합계 - 톤 환산, 소속 창고 전체 합산
+// 비축기준(stock_targets)은 지사+카테고리 단위로만 존재
+router.get("/branch-summary", requireAuth, (req, res) => {
+  const { branch_id } = req.query;
+  const clauses = [];
+  const params = [];
+  if (branch_id) {
+    clauses.push("b.id = ?");
+    params.push(branch_id);
+  }
+  const where = clauses.length ? "WHERE " + clauses.join(" AND ") : "";
   const rows = db
     .prepare(
       `SELECT b.id AS branch_id, b.name AS branch_name,
-              w.id AS warehouse_id, w.name AS warehouse_name,
-              i.id AS item_id, i.name AS item_name, i.category, i.unit, i.min_stock,
-              COALESCE(SUM(t.delta), 0) AS quantity
-       FROM warehouses w
-       JOIN branches b ON b.id = w.branch_id
+              i.category,
+              SUM(COALESCE(t.delta, 0) * i.to_ton_factor) AS total_tons,
+              COALESCE(st.min_stock_tons, 0) AS min_stock_tons
+       FROM branches b
        CROSS JOIN items i
+       LEFT JOIN warehouses w ON w.branch_id = b.id
        LEFT JOIN transactions t ON t.warehouse_id = w.id AND t.item_id = i.id
-       GROUP BY w.id, i.id
-       HAVING COALESCE(SUM(t.delta), 0) < i.min_stock
-       ORDER BY (i.min_stock - COALESCE(SUM(t.delta), 0)) DESC`
+       LEFT JOIN stock_targets st ON st.branch_id = b.id AND st.category = i.category
+       ${where}
+       GROUP BY b.id, i.category
+       ORDER BY b.name, i.category`
     )
-    .all();
+    .all(...params);
   res.json(rows);
 });
 

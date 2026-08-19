@@ -10,6 +10,7 @@ import History from "./pages/History.jsx";
 import AdminBranches from "./pages/admin/Branches.jsx";
 import AdminWarehouses from "./pages/admin/Warehouses.jsx";
 import AdminItems from "./pages/admin/Items.jsx";
+import AdminStockTargets from "./pages/admin/StockTargets.jsx";
 import AdminUsers from "./pages/admin/Users.jsx";
 
 function RequireAuth({ roles, children }) {
@@ -64,6 +65,14 @@ export default function App() {
           element={
             <RequireAuth roles={["admin"]}>
               <AdminItems />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="admin/stock-targets"
+          element={
+            <RequireAuth roles={["admin"]}>
+              <AdminStockTargets />
             </RequireAuth>
           }
         />

@@ -44,13 +44,25 @@ CREATE TABLE IF NOT EXISTS users (
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- items: 품목의 형태(form)별 세부 항목. category가 같은 items는 하나의 "품목"으로 묶여
+-- 재고 합계 시 to_ton_factor로 톤 환산되어 합산됨 (예: 소금(제설용)의 톤백/개포)
 CREATE TABLE IF NOT EXISTS items (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL,
-  category TEXT,
+  category TEXT NOT NULL,
   unit TEXT NOT NULL,
-  min_stock REAL NOT NULL DEFAULT 0,
-  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  to_ton_factor REAL NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE(category, name)
+);
+
+-- stock_targets: 비축기준(최소 재고)은 창고가 아닌 지사 단위, 품목 카테고리별로 설정
+CREATE TABLE IF NOT EXISTS stock_targets (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  branch_id INTEGER NOT NULL REFERENCES branches(id),
+  category TEXT NOT NULL,
+  min_stock_tons REAL NOT NULL DEFAULT 0,
+  UNIQUE(branch_id, category)
 );
 
 CREATE TABLE IF NOT EXISTS transactions (

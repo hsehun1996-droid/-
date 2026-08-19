@@ -1,12 +1,13 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import client from "../../api/client.js";
 
-const EMPTY = { name: "", category: "", unit: "", min_stock: 0 };
+const EMPTY = { name: "", category: "", unit: "", to_ton_factor: 1 };
 
 export default function AdminItems() {
   const [rows, setRows] = useState([]);
   const [form, setForm] = useState(EMPTY);
   const [error, setError] = useState("");
+  const [factorDrafts, setFactorDrafts] = useState({});
 
   function reload() {
     client.get("/items").then((res) => setRows(res.data));
@@ -36,27 +37,54 @@ export default function AdminItems() {
     }
   }
 
+  async function handleFactorSave(item) {
+    const draft = factorDrafts[item.id];
+    const value = Number(draft);
+    if (!draft || Number.isNaN(value) || value <= 0) {
+      alert("환산계수는 0보다 큰 숫자여야 합니다.");
+      return;
+    }
+    await client.put(`/items/${item.id}`, { ...item, to_ton_factor: value });
+    setFactorDrafts((d) => ({ ...d, [item.id]: undefined }));
+    reload();
+  }
+
+  const grouped = useMemo(() => {
+    const map = new Map();
+    for (const it of rows) {
+      if (!map.has(it.category)) map.set(it.category, []);
+      map.get(it.category).push(it);
+    }
+    return map;
+  }, [rows]);
+
   return (
     <div className="max-w-3xl">
       <h2 className="text-xl font-bold text-slate-800 mb-4">품목 관리</h2>
+      <p className="text-sm text-slate-500 mb-4">
+        같은 "품목(카테고리)" 아래 여러 형태(톤백/개포/염수 등)를 등록할 수 있습니다. 환산계수는 해당
+        형태 1단위(포대, 리터 등)가 몇 톤에 해당하는지를 나타내며, 재고 합계·비축기준 비교에 사용됩니다.
+      </p>
 
       <form onSubmit={handleAdd} className="bg-white rounded-xl shadow-sm p-4 mb-6 flex flex-wrap gap-3 items-end">
         <div>
-          <label className="block text-xs font-semibold text-slate-500 mb-1">품목명</label>
-          <input
-            className="border border-slate-300 rounded-lg px-3 py-2"
-            value={form.name}
-            onChange={(e) => setForm({ ...form, name: e.target.value })}
-            required
-          />
-        </div>
-        <div>
-          <label className="block text-xs font-semibold text-slate-500 mb-1">분류</label>
+          <label className="block text-xs font-semibold text-slate-500 mb-1">품목(카테고리)</label>
           <input
             className="border border-slate-300 rounded-lg px-3 py-2"
             value={form.category}
             onChange={(e) => setForm({ ...form, category: e.target.value })}
-            placeholder="제설제 / 장비 등"
+            placeholder="예: 소금(제설용)"
+            required
+          />
+        </div>
+        <div>
+          <label className="block text-xs font-semibold text-slate-500 mb-1">형태명</label>
+          <input
+            className="border border-slate-300 rounded-lg px-3 py-2"
+            value={form.name}
+            onChange={(e) => setForm({ ...form, name: e.target.value })}
+            placeholder="예: 톤백"
+            required
           />
         </div>
         <div>
@@ -70,46 +98,66 @@ export default function AdminItems() {
           />
         </div>
         <div>
-          <label className="block text-xs font-semibold text-slate-500 mb-1">최소재고기준</label>
+          <label className="block text-xs font-semibold text-slate-500 mb-1">환산계수(톤/단위)</label>
           <input
             type="number"
-            className="border border-slate-300 rounded-lg px-3 py-2 w-28"
-            value={form.min_stock}
-            onChange={(e) => setForm({ ...form, min_stock: Number(e.target.value) })}
+            step="0.0001"
+            className="border border-slate-300 rounded-lg px-3 py-2 w-32"
+            value={form.to_ton_factor}
+            onChange={(e) => setForm({ ...form, to_ton_factor: Number(e.target.value) })}
           />
         </div>
         <button className="bg-brand-700 text-white px-4 py-2 rounded-lg font-semibold">추가</button>
         {error && <span className="text-sm text-red-600">{error}</span>}
       </form>
 
-      <div className="bg-white rounded-xl shadow-sm overflow-hidden">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="text-left text-slate-500 border-b">
-              <th className="px-4 py-2">품목명</th>
-              <th className="px-4 py-2">분류</th>
-              <th className="px-4 py-2">단위</th>
-              <th className="px-4 py-2">최소재고기준</th>
-              <th className="px-4 py-2"></th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((it) => (
-              <tr key={it.id} className="border-b last:border-0">
-                <td className="px-4 py-2 font-medium text-slate-800">{it.name}</td>
-                <td className="px-4 py-2 text-slate-500">{it.category || "-"}</td>
-                <td className="px-4 py-2">{it.unit}</td>
-                <td className="px-4 py-2">{it.min_stock}</td>
-                <td className="px-4 py-2 text-right">
-                  <button onClick={() => handleDelete(it.id)} className="text-sm text-red-600 font-medium">
-                    삭제
-                  </button>
-                </td>
+      {[...grouped.entries()].map(([category, list]) => (
+        <div key={category} className="mb-6 bg-white rounded-xl shadow-sm overflow-hidden">
+          <div className="bg-brand-50 px-4 py-2 font-semibold text-brand-800">{category}</div>
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-left text-slate-500 border-b">
+                <th className="px-4 py-2">형태</th>
+                <th className="px-4 py-2">단위</th>
+                <th className="px-4 py-2">환산계수(톤/단위)</th>
+                <th className="px-4 py-2"></th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+            </thead>
+            <tbody>
+              {list.map((it) => (
+                <tr key={it.id} className="border-b last:border-0">
+                  <td className="px-4 py-2 font-medium text-slate-800">{it.name}</td>
+                  <td className="px-4 py-2">{it.unit}</td>
+                  <td className="px-4 py-2">
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="number"
+                        step="0.0001"
+                        className="border border-slate-300 rounded-lg px-2 py-1 w-28"
+                        value={factorDrafts[it.id] ?? it.to_ton_factor}
+                        onChange={(e) => setFactorDrafts((d) => ({ ...d, [it.id]: e.target.value }))}
+                      />
+                      {factorDrafts[it.id] != null && (
+                        <button
+                          onClick={() => handleFactorSave(it)}
+                          className="text-xs bg-brand-700 text-white px-2 py-1 rounded"
+                        >
+                          저장
+                        </button>
+                      )}
+                    </div>
+                  </td>
+                  <td className="px-4 py-2 text-right">
+                    <button onClick={() => handleDelete(it.id)} className="text-sm text-red-600 font-medium">
+                      삭제
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ))}
     </div>
   );
 }

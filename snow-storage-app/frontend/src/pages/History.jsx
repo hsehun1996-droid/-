@@ -132,7 +132,9 @@ export default function History() {
                   <td className="px-4 py-2 whitespace-nowrap">{r.occurred_at}</td>
                   <td className="px-4 py-2">{r.branch_name}</td>
                   <td className="px-4 py-2">{r.warehouse_name}</td>
-                  <td className="px-4 py-2">{r.item_name}</td>
+                  <td className="px-4 py-2">
+                    {r.item_category} <span className="text-slate-400">· {r.item_name}</span>
+                  </td>
                   <td className="px-4 py-2">
                     <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${TYPE_STYLE[r.type]}`}>
                       {TYPE_LABEL[r.type]}

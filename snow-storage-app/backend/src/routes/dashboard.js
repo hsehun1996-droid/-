@@ -9,49 +9,43 @@ router.get("/summary", requireAuth, (req, res) => {
   const warehouseCount = db.prepare("SELECT COUNT(*) c FROM warehouses").get().c;
   const itemCount = db.prepare("SELECT COUNT(*) c FROM items").get().c;
 
-  const stockByBranch = db
+  // 지사 x 카테고리별 톤 환산 합계 (소속 창고 전체 합산) + 비축기준 대비 부족 여부
+  const branchCategoryTotals = db
     .prepare(
       `SELECT b.id AS branch_id, b.name AS branch_name,
-              COALESCE(SUM(t.delta), 0) AS total_quantity
+              i.category,
+              SUM(COALESCE(t.delta, 0) * i.to_ton_factor) AS total_tons,
+              COALESCE(st.min_stock_tons, 0) AS min_stock_tons
        FROM branches b
-       LEFT JOIN warehouses w ON w.branch_id = b.id
-       LEFT JOIN transactions t ON t.warehouse_id = w.id
-       GROUP BY b.id
-       ORDER BY b.name`
-    )
-    .all();
-
-  const stockByCategory = db
-    .prepare(
-      `SELECT COALESCE(i.category, '기타') AS category,
-              COALESCE(SUM(t.delta), 0) AS total_quantity
-       FROM items i
-       LEFT JOIN transactions t ON t.item_id = i.id
-       GROUP BY i.category
-       ORDER BY category`
-    )
-    .all();
-
-  const lowStockAll = db
-    .prepare(
-      `SELECT b.name AS branch_name, w.id AS warehouse_id, w.name AS warehouse_name,
-              i.id AS item_id, i.name AS item_name, i.unit, i.min_stock,
-              COALESCE(SUM(t.delta), 0) AS quantity
-       FROM warehouses w
-       JOIN branches b ON b.id = w.branch_id
        CROSS JOIN items i
+       LEFT JOIN warehouses w ON w.branch_id = b.id
        LEFT JOIN transactions t ON t.warehouse_id = w.id AND t.item_id = i.id
-       GROUP BY w.id, i.id
-       HAVING COALESCE(SUM(t.delta), 0) < i.min_stock
-       ORDER BY (i.min_stock - COALESCE(SUM(t.delta), 0)) DESC`
+       LEFT JOIN stock_targets st ON st.branch_id = b.id AND st.category = i.category
+       GROUP BY b.id, i.category
+       ORDER BY b.name, i.category`
     )
     .all();
+
+  const stockByBranch = Object.values(
+    branchCategoryTotals.reduce((acc, row) => {
+      if (!acc[row.branch_id]) {
+        acc[row.branch_id] = { branch_id: row.branch_id, branch_name: row.branch_name, total_tons: 0 };
+      }
+      acc[row.branch_id].total_tons += row.total_tons;
+      return acc;
+    }, {})
+  );
+
+  const lowStockAll = branchCategoryTotals
+    .filter((row) => row.total_tons < row.min_stock_tons)
+    .sort((a, b) => b.min_stock_tons - b.total_tons - (a.min_stock_tons - a.total_tons));
   const lowStock = lowStockAll.slice(0, 20);
 
   const recent = db
     .prepare(
       `SELECT t.id, t.type, t.quantity, t.occurred_at, t.memo,
-              b.name AS branch_name, w.name AS warehouse_name, i.name AS item_name, i.unit, u.name AS user_name
+              b.name AS branch_name, w.name AS warehouse_name,
+              i.category, i.name AS item_form, i.unit, u.name AS user_name
        FROM transactions t
        JOIN warehouses w ON w.id = t.warehouse_id
        JOIN branches b ON b.id = w.branch_id
@@ -68,7 +62,6 @@ router.get("/summary", requireAuth, (req, res) => {
     item_count: itemCount,
     low_stock_count: lowStockAll.length,
     stock_by_branch: stockByBranch,
-    stock_by_category: stockByCategory,
     low_stock: lowStock,
     recent_transactions: recent,
   });

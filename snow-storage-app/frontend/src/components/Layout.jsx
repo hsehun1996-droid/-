@@ -11,6 +11,7 @@ const NAV_ITEMS = [
   { to: "/admin/branches", label: "지사 관리", roles: ["admin"] },
   { to: "/admin/warehouses", label: "창고 관리", roles: ["admin"] },
   { to: "/admin/items", label: "품목 관리", roles: ["admin"] },
+  { to: "/admin/stock-targets", label: "비축기준 관리", roles: ["admin"] },
   { to: "/admin/users", label: "사용자 관리", roles: ["admin"] },
 ];
 

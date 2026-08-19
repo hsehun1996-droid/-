@@ -8,7 +8,8 @@ export default function Stock() {
   const [warehouses, setWarehouses] = useState([]);
   const [branchId, setBranchId] = useState("");
   const [warehouseId, setWarehouseId] = useState("");
-  const [rows, setRows] = useState([]);
+  const [detailRows, setDetailRows] = useState([]);
+  const [summaryRows, setSummaryRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const isField = user?.role === "field";
 
@@ -31,18 +32,24 @@ export default function Stock() {
 
   useEffect(() => {
     setLoading(true);
-    const params = {};
-    if (branchId) params.branch_id = branchId;
-    if (warehouseId) params.warehouse_id = warehouseId;
-    client
-      .get("/stock", { params })
-      .then((res) => setRows(res.data))
+    const detailParams = {};
+    if (branchId) detailParams.branch_id = branchId;
+    if (warehouseId) detailParams.warehouse_id = warehouseId;
+    const summaryParams = branchId ? { branch_id: branchId } : {};
+    Promise.all([
+      client.get("/stock", { params: detailParams }),
+      client.get("/stock/branch-summary", { params: summaryParams }),
+    ])
+      .then(([detailRes, summaryRes]) => {
+        setDetailRows(detailRes.data);
+        setSummaryRows(summaryRes.data);
+      })
       .finally(() => setLoading(false));
   }, [branchId, warehouseId]);
 
-  const grouped = useMemo(() => {
+  const groupedDetail = useMemo(() => {
     const map = new Map();
-    for (const r of rows) {
+    for (const r of detailRows) {
       const branchKey = r.branch_name;
       if (!map.has(branchKey)) map.set(branchKey, new Map());
       const whMap = map.get(branchKey);
@@ -50,7 +57,16 @@ export default function Stock() {
       whMap.get(r.warehouse_name).push(r);
     }
     return map;
-  }, [rows]);
+  }, [detailRows]);
+
+  const summaryByBranch = useMemo(() => {
+    const map = new Map();
+    for (const r of summaryRows) {
+      if (!map.has(r.branch_name)) map.set(r.branch_name, []);
+      map.get(r.branch_name).push(r);
+    }
+    return map;
+  }, [summaryRows]);
 
   return (
     <div>
@@ -92,9 +108,47 @@ export default function Stock() {
       {loading ? (
         <p className="text-slate-500">불러오는 중...</p>
       ) : (
-        [...grouped.entries()].map(([branchName, whMap]) => (
+        [...groupedDetail.entries()].map(([branchName, whMap]) => (
           <div key={branchName} className="mb-8">
             <h3 className="text-base font-bold text-brand-800 mb-2">{branchName}</h3>
+
+            <div className="mb-3 bg-white rounded-xl shadow-sm overflow-hidden">
+              <div className="bg-slate-100 px-4 py-2 font-semibold text-slate-700 text-sm">
+                지사 합계 (소속 창고 전체, 톤 환산)
+              </div>
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left text-slate-500 border-b">
+                    <th className="px-4 py-2">품목</th>
+                    <th className="px-4 py-2 text-right">합계(톤)</th>
+                    <th className="px-4 py-2 text-right">비축기준(톤)</th>
+                    <th className="px-4 py-2"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(summaryByBranch.get(branchName) || []).map((s) => {
+                    const low = s.total_tons < s.min_stock_tons;
+                    return (
+                      <tr key={s.category} className={`border-b last:border-0 ${low ? "bg-red-50" : ""}`}>
+                        <td className="px-4 py-2 font-medium text-slate-800">{s.category}</td>
+                        <td className="px-4 py-2 text-right font-bold">{s.total_tons.toLocaleString()} 톤</td>
+                        <td className="px-4 py-2 text-right text-slate-500">
+                          {s.min_stock_tons.toLocaleString()} 톤
+                        </td>
+                        <td className="px-4 py-2 text-right">
+                          {low && (
+                            <span className="inline-block px-2 py-0.5 rounded-full bg-red-100 text-red-700 text-xs font-semibold">
+                              부족
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
             {[...whMap.entries()].map(([warehouseName, list]) => (
               <div key={warehouseName} className="mb-4 bg-white rounded-xl shadow-sm overflow-hidden">
                 <div className="bg-brand-50 px-4 py-2 font-semibold text-brand-800">{warehouseName}</div>
@@ -102,35 +156,24 @@ export default function Stock() {
                   <thead>
                     <tr className="text-left text-slate-500 border-b">
                       <th className="px-4 py-2">품목</th>
-                      <th className="px-4 py-2">분류</th>
-                      <th className="px-4 py-2 text-right">현재고</th>
-                      <th className="px-4 py-2 text-right">최소기준</th>
-                      <th className="px-4 py-2"></th>
+                      <th className="px-4 py-2">형태</th>
+                      <th className="px-4 py-2 text-right">재고</th>
+                      <th className="px-4 py-2 text-right">톤 환산</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {list.map((r) => {
-                      const low = r.quantity < r.min_stock;
-                      return (
-                        <tr key={r.item_id} className={`border-b last:border-0 ${low ? "bg-red-50" : ""}`}>
-                          <td className="px-4 py-2 font-medium text-slate-800">{r.item_name}</td>
-                          <td className="px-4 py-2 text-slate-500">{r.category}</td>
-                          <td className="px-4 py-2 text-right font-semibold">
-                            {r.quantity.toLocaleString()} {r.unit}
-                          </td>
-                          <td className="px-4 py-2 text-right text-slate-500">
-                            {r.min_stock.toLocaleString()} {r.unit}
-                          </td>
-                          <td className="px-4 py-2 text-right">
-                            {low && (
-                              <span className="inline-block px-2 py-0.5 rounded-full bg-red-100 text-red-700 text-xs font-semibold">
-                                부족
-                              </span>
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })}
+                    {list.map((r) => (
+                      <tr key={r.item_id} className="border-b last:border-0">
+                        <td className="px-4 py-2 font-medium text-slate-800">{r.category}</td>
+                        <td className="px-4 py-2 text-slate-500">{r.item_name}</td>
+                        <td className="px-4 py-2 text-right font-semibold">
+                          {r.quantity.toLocaleString()} {r.unit}
+                        </td>
+                        <td className="px-4 py-2 text-right text-slate-500">
+                          {(r.quantity * r.to_ton_factor).toLocaleString()} 톤
+                        </td>
+                      </tr>
+                    ))}
                   </tbody>
                 </table>
               </div>
