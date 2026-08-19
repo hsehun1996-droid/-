@@ -1,6 +1,6 @@
 const express = require("express");
 const db = require("../db");
-const { requireAuth } = require("../auth");
+const { requireAuth, effectiveBranchId, canAccessWarehouse } = require("../auth");
 
 const router = express.Router();
 
@@ -8,7 +8,7 @@ function computeDelta(type, quantity) {
   const q = Number(quantity);
   if (type === "in") return Math.abs(q);
   if (type === "out") return -Math.abs(q);
-  return q; // adjust: signed value as given
+  return q; // adjust: signed값 그대로
 }
 
 function insertTransaction(tx, userId) {
@@ -119,7 +119,11 @@ function insertConversion(payload, userId) {
 }
 
 router.post("/convert", requireAuth, (req, res) => {
-  const result = insertConversion(req.body || {}, req.user.id);
+  const payload = req.body || {};
+  if (!canAccessWarehouse(req.user, payload.warehouse_id)) {
+    return res.status(403).json({ error: "소속 지사의 창고에만 기록할 수 있습니다." });
+  }
+  const result = insertConversion(payload, req.user.id);
   if (result.error) return res.status(400).json(result);
   const code = result.status === "created" ? 201 : 200;
   res.status(code).json(result);
@@ -127,24 +131,27 @@ router.post("/convert", requireAuth, (req, res) => {
 
 router.post("/convert/sync", requireAuth, (req, res) => {
   const items = Array.isArray(req.body?.conversions) ? req.body.conversions : [];
-  const results = items.map((payload) => ({
-    client_id: payload.client_id,
-    ...insertConversion(payload, req.user.id),
-  }));
+  const results = items.map((payload) => {
+    if (!canAccessWarehouse(req.user, payload.warehouse_id)) {
+      return { client_id: payload.client_id, error: "소속 지사의 창고에만 기록할 수 있습니다." };
+    }
+    return { client_id: payload.client_id, ...insertConversion(payload, req.user.id) };
+  });
   res.json({ results });
 });
 
 router.get("/", requireAuth, (req, res) => {
-  const { warehouse_id, branch_id, item_id, type, from, to, limit } = req.query;
+  const { warehouse_id, item_id, type, from, to, limit } = req.query;
+  const branchId = effectiveBranchId(req.user, req.query.branch_id);
   const clauses = [];
   const params = [];
   if (warehouse_id) {
     clauses.push("t.warehouse_id = ?");
     params.push(warehouse_id);
   }
-  if (branch_id) {
+  if (branchId) {
     clauses.push("w.branch_id = ?");
-    params.push(branch_id);
+    params.push(branchId);
   }
   if (item_id) {
     clauses.push("t.item_id = ?");
@@ -182,7 +189,11 @@ router.get("/", requireAuth, (req, res) => {
 });
 
 router.post("/", requireAuth, (req, res) => {
-  const result = insertTransaction(req.body || {}, req.user.id);
+  const tx = req.body || {};
+  if (!canAccessWarehouse(req.user, tx.warehouse_id)) {
+    return res.status(403).json({ error: "소속 지사의 창고에만 기록할 수 있습니다." });
+  }
+  const result = insertTransaction(tx, req.user.id);
   if (result.error) return res.status(400).json(result);
   const code = result.status === "created" ? 201 : 200;
   res.status(code).json(result);
@@ -190,10 +201,12 @@ router.post("/", requireAuth, (req, res) => {
 
 router.post("/sync", requireAuth, (req, res) => {
   const items = Array.isArray(req.body?.transactions) ? req.body.transactions : [];
-  const results = items.map((tx) => ({
-    client_id: tx.client_id,
-    ...insertTransaction(tx, req.user.id),
-  }));
+  const results = items.map((tx) => {
+    if (!canAccessWarehouse(req.user, tx.warehouse_id)) {
+      return { client_id: tx.client_id, error: "소속 지사의 창고에만 기록할 수 있습니다." };
+    }
+    return { client_id: tx.client_id, ...insertTransaction(tx, req.user.id) };
+  });
   res.json({ results });
 });
 

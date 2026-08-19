@@ -1,10 +1,11 @@
 const express = require("express");
 const db = require("../db");
-const { requireAuth } = require("../auth");
+const { requireAuth, requireRole } = require("../auth");
 
 const router = express.Router();
 
-router.get("/summary", requireAuth, (req, res) => {
+// 대시보드는 전체 지사 현황을 보여주므로 본부 권한(admin/office)만 접근
+router.get("/summary", requireAuth, requireRole("admin", "office"), (req, res) => {
   const branchCount = db.prepare("SELECT COUNT(*) c FROM branches").get().c;
   const warehouseCount = db.prepare("SELECT COUNT(*) c FROM warehouses").get().c;
   const itemCount = db.prepare("SELECT COUNT(*) c FROM items").get().c;

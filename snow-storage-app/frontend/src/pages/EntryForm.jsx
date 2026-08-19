@@ -31,15 +31,21 @@ export default function EntryForm() {
   const [message, setMessage] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const isConvert = type === "convert";
+  const isField = user?.role === "field";
 
   useEffect(() => {
     Promise.all([client.get("/branches"), client.get("/warehouses")]).then(([branchRes, warehouseRes]) => {
-      setBranches(branchRes.data);
+      // field 역할은 백엔드가 이미 자신의 지사 데이터만 내려주지만, 지사 선택 목록도
+      // 자신의 지사 하나로 고정해 다른 지사가 보이지 않도록 한다.
+      const visibleBranches = isField
+        ? branchRes.data.filter((b) => b.id === user.branch_id)
+        : branchRes.data;
+      setBranches(visibleBranches);
       setWarehouses(warehouseRes.data);
-      const preferredWarehouse = warehouseRes.data.find((w) => w.id === user?.warehouse_id);
-      const initialBranchId = preferredWarehouse?.branch_id || branchRes.data[0]?.id || "";
-      setBranchId(String(initialBranchId));
-      setWarehouseId(String(preferredWarehouse?.id || ""));
+      const initialBranchId = isField ? user.branch_id : visibleBranches[0]?.id || "";
+      setBranchId(String(initialBranchId || ""));
+      const firstWarehouse = warehouseRes.data.find((w) => String(w.branch_id) === String(initialBranchId));
+      setWarehouseId(String(firstWarehouse?.id || ""));
     });
     client.get("/items").then((res) => {
       setItems(res.data);
@@ -182,9 +188,10 @@ export default function EntryForm() {
           <div>
             <label className="block text-sm font-semibold text-slate-700 mb-2">지사</label>
             <select
-              className="w-full border border-slate-300 rounded-lg px-3 py-3 text-base bg-white"
+              className="w-full border border-slate-300 rounded-lg px-3 py-3 text-base bg-white disabled:bg-slate-100"
               value={branchId}
               onChange={(e) => setBranchId(e.target.value)}
+              disabled={isField}
             >
               {branches.map((b) => (
                 <option key={b.id} value={b.id}>

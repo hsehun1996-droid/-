@@ -17,7 +17,7 @@ router.get("/", requireAuth, (req, res) => {
 });
 
 // 지사+카테고리 조합을 upsert (없으면 생성, 있으면 갱신)
-router.put("/", requireAuth, requireRole("admin"), (req, res) => {
+router.put("/", requireAuth, requireRole("admin", "office"), (req, res) => {
   const { branch_id, category, min_stock_tons } = req.body || {};
   if (!branch_id || !category || min_stock_tons == null) {
     return res.status(400).json({ error: "지사, 카테고리, 비축기준(톤)을 입력하세요." });

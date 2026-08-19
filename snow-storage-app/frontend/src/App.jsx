@@ -47,7 +47,7 @@ export default function App() {
         <Route
           path="admin/branches"
           element={
-            <RequireAuth roles={["admin"]}>
+            <RequireAuth roles={["admin", "office"]}>
               <AdminBranches />
             </RequireAuth>
           }
@@ -55,7 +55,7 @@ export default function App() {
         <Route
           path="admin/warehouses"
           element={
-            <RequireAuth roles={["admin"]}>
+            <RequireAuth roles={["admin", "office"]}>
               <AdminWarehouses />
             </RequireAuth>
           }
@@ -63,7 +63,7 @@ export default function App() {
         <Route
           path="admin/items"
           element={
-            <RequireAuth roles={["admin"]}>
+            <RequireAuth roles={["admin", "office"]}>
               <AdminItems />
             </RequireAuth>
           }
@@ -71,7 +71,7 @@ export default function App() {
         <Route
           path="admin/stock-targets"
           element={
-            <RequireAuth roles={["admin"]}>
+            <RequireAuth roles={["admin", "office"]}>
               <AdminStockTargets />
             </RequireAuth>
           }
@@ -79,7 +79,7 @@ export default function App() {
         <Route
           path="admin/users"
           element={
-            <RequireAuth roles={["admin"]}>
+            <RequireAuth roles={["admin", "office"]}>
               <AdminUsers />
             </RequireAuth>
           }

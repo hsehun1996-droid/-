@@ -1,12 +1,12 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useState } from "react";
 import client from "../../api/client.js";
 import { roleLabel } from "../../components/Layout.jsx";
 
-const EMPTY = { username: "", password: "", name: "", role: "field", warehouse_id: "" };
+const EMPTY = { username: "", password: "", name: "", role: "field", branch_id: "" };
 
 export default function AdminUsers() {
   const [rows, setRows] = useState([]);
-  const [warehouses, setWarehouses] = useState([]);
+  const [branches, setBranches] = useState([]);
   const [form, setForm] = useState(EMPTY);
   const [error, setError] = useState("");
 
@@ -16,17 +16,8 @@ export default function AdminUsers() {
 
   useEffect(() => {
     reload();
-    client.get("/warehouses").then((res) => setWarehouses(res.data));
+    client.get("/branches").then((res) => setBranches(res.data));
   }, []);
-
-  const warehousesByBranch = useMemo(() => {
-    const map = new Map();
-    for (const w of warehouses) {
-      if (!map.has(w.branch_name)) map.set(w.branch_name, []);
-      map.get(w.branch_name).push(w);
-    }
-    return map;
-  }, [warehouses]);
 
   async function handleAdd(e) {
     e.preventDefault();
@@ -34,7 +25,7 @@ export default function AdminUsers() {
     try {
       await client.post("/users", {
         ...form,
-        warehouse_id: form.warehouse_id ? Number(form.warehouse_id) : null,
+        branch_id: form.branch_id ? Number(form.branch_id) : null,
       });
       setForm(EMPTY);
       reload();
@@ -56,6 +47,9 @@ export default function AdminUsers() {
   return (
     <div className="max-w-3xl">
       <h2 className="text-xl font-bold text-slate-800 mb-4">사용자 관리</h2>
+      <p className="text-sm text-slate-500 mb-4">
+        현장 역할은 소속 지사에 속한 모든 창고에 접근할 수 있습니다 (창고 단위가 아닌 지사 단위 권한).
+      </p>
 
       <form onSubmit={handleAdd} className="bg-white rounded-xl shadow-sm p-4 mb-6 flex flex-wrap gap-3 items-end">
         <div>
@@ -98,21 +92,17 @@ export default function AdminUsers() {
           </select>
         </div>
         <div>
-          <label className="block text-xs font-semibold text-slate-500 mb-1">소속 창고 (현장)</label>
+          <label className="block text-xs font-semibold text-slate-500 mb-1">소속 지사 (현장)</label>
           <select
             className="border border-slate-300 rounded-lg px-3 py-2 bg-white"
-            value={form.warehouse_id}
-            onChange={(e) => setForm({ ...form, warehouse_id: e.target.value })}
+            value={form.branch_id}
+            onChange={(e) => setForm({ ...form, branch_id: e.target.value })}
           >
             <option value="">-</option>
-            {[...warehousesByBranch.entries()].map(([branchName, list]) => (
-              <optgroup key={branchName} label={branchName}>
-                {list.map((w) => (
-                  <option key={w.id} value={w.id}>
-                    {w.name}
-                  </option>
-                ))}
-              </optgroup>
+            {branches.map((b) => (
+              <option key={b.id} value={b.id}>
+                {b.name}
+              </option>
             ))}
           </select>
         </div>
@@ -129,11 +119,8 @@ export default function AdminUsers() {
               </div>
               <div className="text-sm text-slate-500">
                 {roleLabel(u.role)}
-                {u.warehouse_id
-                  ? (() => {
-                      const wh = warehouses.find((w) => w.id === u.warehouse_id);
-                      return wh ? ` · ${wh.branch_name} ${wh.name}` : "";
-                    })()
+                {u.branch_id
+                  ? ` · ${branches.find((b) => b.id === u.branch_id)?.name || ""}`
                   : ""}
               </div>
             </div>

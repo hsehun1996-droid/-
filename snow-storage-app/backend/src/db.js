@@ -34,13 +34,15 @@ CREATE TABLE IF NOT EXISTS warehouses (
   UNIQUE(branch_id, name)
 );
 
+-- field 역할 계정은 branch_id로 소속 지사가 정해지며, 그 지사에 속한 모든 창고에
+-- 접근할 수 있다(창고 단위가 아닌 지사 단위 권한 범위).
 CREATE TABLE IF NOT EXISTS users (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   username TEXT NOT NULL UNIQUE,
   password_hash TEXT NOT NULL,
   name TEXT NOT NULL,
   role TEXT NOT NULL CHECK(role IN ('admin','office','field')),
-  warehouse_id INTEGER REFERENCES warehouses(id) ON DELETE SET NULL,
+  branch_id INTEGER REFERENCES branches(id) ON DELETE SET NULL,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 

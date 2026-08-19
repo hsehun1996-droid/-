@@ -41,15 +41,15 @@ function upsertStockTarget(branchId, category, minStockTons) {
   return db.prepare("SELECT * FROM stock_targets WHERE id = ?").get(info.lastInsertRowid);
 }
 
-function upsertUser(username, password, name, role, warehouse_id) {
+function upsertUser(username, password, name, role, branch_id) {
   const existing = db.prepare("SELECT * FROM users WHERE username = ?").get(username);
   if (existing) return existing;
   const hash = bcrypt.hashSync(password, 10);
   const info = db
     .prepare(
-      "INSERT INTO users (username, password_hash, name, role, warehouse_id) VALUES (?, ?, ?, ?, ?)"
+      "INSERT INTO users (username, password_hash, name, role, branch_id) VALUES (?, ?, ?, ?, ?)"
     )
-    .run(username, hash, name, role, warehouse_id || null);
+    .run(username, hash, name, role, branch_id || null);
   return db.prepare("SELECT * FROM users WHERE id = ?").get(info.lastInsertRowid);
 }
 
@@ -95,19 +95,27 @@ for (const [branchName, targets] of Object.entries(BRANCH_STOCK_TARGETS_TONS)) {
   }
 }
 
-upsertUser("admin", "admin1234", "관리자", "admin", null);
-upsertUser("office1", "office1234", "사무실 담당자", "office", null);
+// 사무실 담당자: 모든 권한(지사/창고/품목/비축기준/사용자 관리 포함)
+upsertUser("of", "1111", "사무실 담당자", "office", null);
 
-const jincheonHq = warehousesByBranch["진천지사"].find((w) => w.name === "지사");
-const chungjuHq = warehousesByBranch["충주지사"].find((w) => w.name === "지사");
-upsertUser("field1", "field1234", "현장 창고 담당자(진천지사)", "field", jincheonHq.id);
-upsertUser("field2", "field1234", "현장 창고 담당자(충주지사)", "field", chungjuHq.id);
+// 지사별 현장 담당자: 소속 지사에 속한 모든 창고에 접근 가능(창고 단위 아님)
+const FIELD_USERS = [
+  { username: "fd1", branch: "진천지사", name: "진천지사 현장담당자" },
+  { username: "fd2", branch: "제천지사", name: "제천지사 현장담당자" },
+  { username: "fd3", branch: "충주지사", name: "충주지사 현장담당자" },
+  { username: "fd4", branch: "보은지사", name: "보은지사 현장담당자" },
+  { username: "fd5", branch: "엄정지사", name: "엄정지사 현장담당자" },
+  { username: "fd6", branch: "상주지사", name: "상주지사 현장담당자" },
+];
+for (const { username, branch, name } of FIELD_USERS) {
+  upsertUser(username, "1111", name, "field", branchesByName[branch].id);
+}
 
 console.log("시드 데이터 생성 완료");
 console.log(`- 지사 ${Object.keys(BRANCH_WAREHOUSES).length}개, 창고 ${Object.values(warehousesByBranch).flat().length}개 생성`);
 console.log("- 품목: 소금(제설용) 톤백/개포(톤), 염화칼슘 톤백/염수(리터, 1톤=1,935리터 기준)");
 console.log("- 지사별 비축기준(톤) 반영 완료");
-console.log("- admin / admin1234 (관리자)");
-console.log("- office1 / office1234 (사무실)");
-console.log(`- field1 / field1234 (현장, 진천지사 - ${jincheonHq.name})`);
-console.log(`- field2 / field1234 (현장, 충주지사 - ${chungjuHq.name})`);
+console.log("- of / 1111 (사무실 담당자, 모든 권한)");
+for (const { username, branch } of FIELD_USERS) {
+  console.log(`- ${username} / 1111 (현장 담당자, ${branch})`);
+}

@@ -1,21 +1,22 @@
 const express = require("express");
 const db = require("../db");
-const { requireAuth } = require("../auth");
+const { requireAuth, effectiveBranchId } = require("../auth");
 
 const router = express.Router();
 
 // 지사 x 창고 x 품목(형태)별 현재 재고 = 해당 조합 거래의 delta 합계 (원 단위, 톤 환산 전)
 router.get("/", requireAuth, (req, res) => {
-  const { warehouse_id, branch_id } = req.query;
+  const { warehouse_id } = req.query;
+  const branchId = effectiveBranchId(req.user, req.query.branch_id);
   const clauses = [];
   const params = [];
   if (warehouse_id) {
     clauses.push("w.id = ?");
     params.push(warehouse_id);
   }
-  if (branch_id) {
+  if (branchId) {
     clauses.push("w.branch_id = ?");
-    params.push(branch_id);
+    params.push(branchId);
   }
   const where = clauses.length ? "WHERE " + clauses.join(" AND ") : "";
   const rows = db
@@ -39,12 +40,12 @@ router.get("/", requireAuth, (req, res) => {
 // 지사별 품목 카테고리(예: 소금(제설용), 염화칼슘) 합계 - 톤 환산, 소속 창고 전체 합산
 // 비축기준(stock_targets)은 지사+카테고리 단위로만 존재
 router.get("/branch-summary", requireAuth, (req, res) => {
-  const { branch_id } = req.query;
+  const branchId = effectiveBranchId(req.user, req.query.branch_id);
   const clauses = [];
   const params = [];
-  if (branch_id) {
+  if (branchId) {
     clauses.push("b.id = ?");
-    params.push(branch_id);
+    params.push(branchId);
   }
   const where = clauses.length ? "WHERE " + clauses.join(" AND ") : "";
   const rows = db

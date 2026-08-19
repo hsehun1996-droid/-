@@ -15,12 +15,11 @@ export default function Stock() {
 
   useEffect(() => {
     Promise.all([client.get("/branches"), client.get("/warehouses")]).then(([branchRes, warehouseRes]) => {
-      setBranches(branchRes.data);
+      const visibleBranches = isField ? branchRes.data.filter((b) => b.id === user.branch_id) : branchRes.data;
+      setBranches(visibleBranches);
       setWarehouses(warehouseRes.data);
-      if (isField && user.warehouse_id) {
-        const wh = warehouseRes.data.find((w) => w.id === user.warehouse_id);
-        setBranchId(String(wh?.branch_id || ""));
-        setWarehouseId(String(user.warehouse_id));
+      if (isField && user.branch_id) {
+        setBranchId(String(user.branch_id));
       }
     });
   }, [user]);
@@ -93,7 +92,6 @@ export default function Stock() {
             className="border border-slate-300 rounded-lg px-3 py-2 bg-white text-sm"
             value={warehouseId}
             onChange={(e) => setWarehouseId(e.target.value)}
-            disabled={isField}
           >
             <option value="">전체 창고</option>
             {warehousesInBranch.map((w) => (

@@ -1,16 +1,16 @@
 const express = require("express");
 const db = require("../db");
-const { requireAuth, requireRole } = require("../auth");
+const { requireAuth, requireRole, effectiveBranchId } = require("../auth");
 
 const router = express.Router();
 
 router.get("/", requireAuth, (req, res) => {
-  const { branch_id } = req.query;
+  const branchId = effectiveBranchId(req.user, req.query.branch_id);
   const clauses = [];
   const params = [];
-  if (branch_id) {
+  if (branchId) {
     clauses.push("w.branch_id = ?");
-    params.push(branch_id);
+    params.push(branchId);
   }
   const where = clauses.length ? "WHERE " + clauses.join(" AND ") : "";
   const rows = db
@@ -25,7 +25,7 @@ router.get("/", requireAuth, (req, res) => {
   res.json(rows);
 });
 
-router.post("/", requireAuth, requireRole("admin"), (req, res) => {
+router.post("/", requireAuth, requireRole("admin", "office"), (req, res) => {
   const { name, branch_id } = req.body || {};
   if (!name || !branch_id) {
     return res.status(400).json({ error: "지사와 창고명을 입력하세요." });
@@ -46,7 +46,7 @@ router.post("/", requireAuth, requireRole("admin"), (req, res) => {
   }
 });
 
-router.put("/:id", requireAuth, requireRole("admin"), (req, res) => {
+router.put("/:id", requireAuth, requireRole("admin", "office"), (req, res) => {
   const { name, branch_id } = req.body || {};
   const existing = db.prepare("SELECT * FROM warehouses WHERE id = ?").get(req.params.id);
   if (!existing) return res.status(404).json({ error: "창고를 찾을 수 없습니다." });
@@ -64,7 +64,7 @@ router.put("/:id", requireAuth, requireRole("admin"), (req, res) => {
   );
 });
 
-router.delete("/:id", requireAuth, requireRole("admin"), (req, res) => {
+router.delete("/:id", requireAuth, requireRole("admin", "office"), (req, res) => {
   const used = db
     .prepare("SELECT COUNT(*) c FROM transactions WHERE warehouse_id = ?")
     .get(req.params.id).c;

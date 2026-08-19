@@ -24,7 +24,7 @@ router.post("/login", (req, res) => {
       username: user.username,
       name: user.name,
       role: user.role,
-      warehouse_id: user.warehouse_id,
+      branch_id: user.branch_id,
     },
   });
 });
