@@ -1,12 +1,13 @@
 import React, { useEffect, useMemo, useState } from "react";
 import client from "../api/client.js";
 import { useAuth } from "../context/AuthContext.jsx";
-import { submitTransaction } from "../offline/sync.js";
+import { submitTransaction, submitConversion } from "../offline/sync.js";
 
 const TYPE_OPTIONS = [
   { value: "in", label: "입고", color: "bg-emerald-600 active:bg-emerald-700" },
   { value: "out", label: "출고", color: "bg-rose-600 active:bg-rose-700" },
   { value: "adjust", label: "재고조정", color: "bg-amber-600 active:bg-amber-700" },
+  { value: "convert", label: "전환", color: "bg-violet-600 active:bg-violet-700" },
 ];
 
 function todayStr() {
@@ -21,12 +22,15 @@ export default function EntryForm() {
   const [branchId, setBranchId] = useState("");
   const [warehouseId, setWarehouseId] = useState("");
   const [itemId, setItemId] = useState("");
+  const [fromItemId, setFromItemId] = useState("");
+  const [toItemId, setToItemId] = useState("");
   const [type, setType] = useState("in");
   const [quantity, setQuantity] = useState("");
   const [occurredAt, setOccurredAt] = useState(todayStr());
   const [memo, setMemo] = useState("");
   const [message, setMessage] = useState(null);
   const [submitting, setSubmitting] = useState(false);
+  const isConvert = type === "convert";
 
   useEffect(() => {
     Promise.all([client.get("/branches"), client.get("/warehouses")]).then(([branchRes, warehouseRes]) => {
@@ -40,6 +44,7 @@ export default function EntryForm() {
     client.get("/items").then((res) => {
       setItems(res.data);
       setItemId(String(res.data[0]?.id || ""));
+      setFromItemId(String(res.data[0]?.id || ""));
     });
   }, [user]);
 
@@ -63,23 +68,60 @@ export default function EntryForm() {
     return map;
   }, [items]);
 
+  const fromItem = useMemo(() => items.find((it) => String(it.id) === fromItemId), [items, fromItemId]);
+  const toItemOptions = useMemo(
+    () => (fromItem ? items.filter((it) => it.category === fromItem.category && it.id !== fromItem.id) : []),
+    [items, fromItem]
+  );
+  const toItem = useMemo(() => items.find((it) => String(it.id) === toItemId), [items, toItemId]);
+
+  useEffect(() => {
+    if (!isConvert) return;
+    if (!toItemOptions.some((it) => String(it.id) === toItemId)) {
+      setToItemId(String(toItemOptions[0]?.id || ""));
+    }
+  }, [isConvert, toItemOptions, toItemId]);
+
+  const convertedPreview = useMemo(() => {
+    if (!fromItem || !toItem || !quantity) return null;
+    const tons = Number(quantity) * fromItem.to_ton_factor;
+    return tons / toItem.to_ton_factor;
+  }, [fromItem, toItem, quantity]);
+
   async function handleSubmit(e) {
     e.preventDefault();
-    if (!warehouseId || !itemId || !quantity || Number(quantity) <= 0) {
-      setMessage({ type: "error", text: "창고·품목·수량을 확인하세요." });
+    if (!warehouseId || !quantity || Number(quantity) <= 0) {
+      setMessage({ type: "error", text: "창고·수량을 확인하세요." });
+      return;
+    }
+    if (isConvert && (!fromItemId || !toItemId)) {
+      setMessage({ type: "error", text: "전환 전/후 형태를 확인하세요." });
+      return;
+    }
+    if (!isConvert && !itemId) {
+      setMessage({ type: "error", text: "품목을 확인하세요." });
       return;
     }
     setSubmitting(true);
     setMessage(null);
     try {
-      const result = await submitTransaction({
-        warehouse_id: Number(warehouseId),
-        item_id: Number(itemId),
-        type,
-        quantity: Number(quantity),
-        occurred_at: occurredAt,
-        memo,
-      });
+      const result = isConvert
+        ? await submitConversion({
+            warehouse_id: Number(warehouseId),
+            from_item_id: Number(fromItemId),
+            to_item_id: Number(toItemId),
+            quantity: Number(quantity),
+            occurred_at: occurredAt,
+            memo,
+          })
+        : await submitTransaction({
+            warehouse_id: Number(warehouseId),
+            item_id: Number(itemId),
+            type,
+            quantity: Number(quantity),
+            occurred_at: occurredAt,
+            memo,
+          });
       if (result.queued) {
         setMessage({ type: "warn", text: "오프라인 상태입니다. 연결되면 자동으로 저장됩니다." });
       } else {
@@ -115,7 +157,7 @@ export default function EntryForm() {
       <form onSubmit={handleSubmit} className="space-y-5">
         <div>
           <label className="block text-sm font-semibold text-slate-700 mb-2">유형</label>
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-2 gap-2">
             {TYPE_OPTIONS.map((opt) => (
               <button
                 type="button"
@@ -129,6 +171,11 @@ export default function EntryForm() {
               </button>
             ))}
           </div>
+          {isConvert && (
+            <p className="text-xs text-slate-500 mt-2">
+              같은 창고 안에서 형태만 바꿉니다 (예: 톤백 → 개포). 재고 총량(톤)은 변하지 않습니다.
+            </p>
+          )}
         </div>
 
         <div className="grid grid-cols-2 gap-4">
@@ -162,27 +209,70 @@ export default function EntryForm() {
           </div>
         </div>
 
-        <div>
-          <label className="block text-sm font-semibold text-slate-700 mb-2">품목</label>
-          <select
-            className="w-full border border-slate-300 rounded-lg px-3 py-3 text-base bg-white"
-            value={itemId}
-            onChange={(e) => setItemId(e.target.value)}
-          >
-            {[...categories.entries()].map(([category, list]) => (
-              <optgroup key={category} label={category || "기타"}>
-                {list.map((it) => (
+        {isConvert ? (
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-semibold text-slate-700 mb-2">전환 전 형태</label>
+              <select
+                className="w-full border border-slate-300 rounded-lg px-3 py-3 text-base bg-white"
+                value={fromItemId}
+                onChange={(e) => setFromItemId(e.target.value)}
+              >
+                {[...categories.entries()].map(([category, list]) => (
+                  <optgroup key={category} label={category || "기타"}>
+                    {list.map((it) => (
+                      <option key={it.id} value={it.id}>
+                        {it.name} ({it.unit})
+                      </option>
+                    ))}
+                  </optgroup>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-semibold text-slate-700 mb-2">전환 후 형태</label>
+              <select
+                className="w-full border border-slate-300 rounded-lg px-3 py-3 text-base bg-white"
+                value={toItemId}
+                onChange={(e) => setToItemId(e.target.value)}
+                disabled={toItemOptions.length === 0}
+              >
+                {toItemOptions.map((it) => (
                   <option key={it.id} value={it.id}>
                     {it.name} ({it.unit})
                   </option>
                 ))}
-              </optgroup>
-            ))}
-          </select>
-        </div>
+              </select>
+              {toItemOptions.length === 0 && (
+                <p className="text-xs text-red-600 mt-1">이 품목에는 전환할 다른 형태가 없습니다.</p>
+              )}
+            </div>
+          </div>
+        ) : (
+          <div>
+            <label className="block text-sm font-semibold text-slate-700 mb-2">품목</label>
+            <select
+              className="w-full border border-slate-300 rounded-lg px-3 py-3 text-base bg-white"
+              value={itemId}
+              onChange={(e) => setItemId(e.target.value)}
+            >
+              {[...categories.entries()].map(([category, list]) => (
+                <optgroup key={category} label={category || "기타"}>
+                  {list.map((it) => (
+                    <option key={it.id} value={it.id}>
+                      {it.name} ({it.unit})
+                    </option>
+                  ))}
+                </optgroup>
+              ))}
+            </select>
+          </div>
+        )}
 
         <div>
-          <label className="block text-sm font-semibold text-slate-700 mb-2">수량</label>
+          <label className="block text-sm font-semibold text-slate-700 mb-2">
+            {isConvert ? "전환 수량 (전환 전 형태 기준)" : "수량"}
+          </label>
           <input
             type="number"
             inputMode="decimal"
@@ -194,6 +284,14 @@ export default function EntryForm() {
             placeholder="0"
             required
           />
+          {isConvert && convertedPreview != null && (
+            <p className="text-sm text-slate-500 mt-2 text-center">
+              → 전환 후 약{" "}
+              <span className="font-semibold text-violet-700">
+                {convertedPreview.toLocaleString(undefined, { maximumFractionDigits: 3 })} {toItem?.unit}
+              </span>
+            </p>
+          )}
         </div>
 
         <div className="grid grid-cols-2 gap-4">
@@ -228,7 +326,7 @@ export default function EntryForm() {
 
         <button
           type="submit"
-          disabled={submitting}
+          disabled={submitting || (isConvert && toItemOptions.length === 0)}
           className="w-full bg-brand-700 text-white font-bold py-4 rounded-xl text-lg active:bg-brand-800 disabled:opacity-60"
         >
           {submitting ? "저장 중..." : "저장"}

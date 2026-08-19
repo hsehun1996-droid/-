@@ -55,6 +55,85 @@ function insertTransaction(tx, userId) {
   }
 }
 
+// 전환: 같은 카테고리 내에서 형태만 바꿔 재기록(예: 톤백 -> 개포). 재고 총량(톤)은
+// 변하지 않고, 창고 내 형태별 수량만 이동한다. 두 개의 ledger row(감소/증가)로 기록.
+function insertConversion(payload, userId) {
+  const { client_id, warehouse_id, from_item_id, to_item_id, quantity, memo, occurred_at } = payload;
+  if (!client_id || !warehouse_id || !from_item_id || !to_item_id || quantity == null || !occurred_at) {
+    return { error: "필수 항목이 누락되었습니다.", client_id };
+  }
+  if (from_item_id === to_item_id) {
+    return { error: "전환 전/후 형태가 같을 수 없습니다.", client_id };
+  }
+
+  const fromClientId = `${client_id}:from`;
+  const existing = db.prepare("SELECT * FROM transactions WHERE client_id = ?").get(fromClientId);
+  if (existing) {
+    const toRow = db
+      .prepare("SELECT * FROM transactions WHERE client_id = ?")
+      .get(`${client_id}:to`);
+    return { status: "duplicate", transactions: [existing, toRow].filter(Boolean) };
+  }
+
+  const fromItem = db.prepare("SELECT * FROM items WHERE id = ?").get(from_item_id);
+  const toItem = db.prepare("SELECT * FROM items WHERE id = ?").get(to_item_id);
+  if (!fromItem || !toItem) {
+    return { error: "품목을 찾을 수 없습니다.", client_id };
+  }
+  if (fromItem.category !== toItem.category) {
+    return { error: "같은 품목(카테고리) 안에서만 전환할 수 있습니다.", client_id };
+  }
+
+  const fromQty = Math.abs(Number(quantity));
+  const tons = fromQty * fromItem.to_ton_factor;
+  const toQty = tons / toItem.to_ton_factor;
+
+  try {
+    db.exec("BEGIN");
+    const infoFrom = db
+      .prepare(
+        `INSERT INTO transactions
+          (client_id, warehouse_id, item_id, type, quantity, delta, memo, user_id, occurred_at)
+         VALUES (?, ?, ?, 'convert', ?, ?, ?, ?, ?)`
+      )
+      .run(fromClientId, warehouse_id, from_item_id, fromQty, -fromQty, memo || null, userId, occurred_at);
+    const infoTo = db
+      .prepare(
+        `INSERT INTO transactions
+          (client_id, warehouse_id, item_id, type, quantity, delta, memo, user_id, occurred_at)
+         VALUES (?, ?, ?, 'convert', ?, ?, ?, ?, ?)`
+      )
+      .run(`${client_id}:to`, warehouse_id, to_item_id, toQty, toQty, memo || null, userId, occurred_at);
+    db.exec("COMMIT");
+    return {
+      status: "created",
+      transactions: [
+        db.prepare("SELECT * FROM transactions WHERE id = ?").get(infoFrom.lastInsertRowid),
+        db.prepare("SELECT * FROM transactions WHERE id = ?").get(infoTo.lastInsertRowid),
+      ],
+    };
+  } catch (e) {
+    db.exec("ROLLBACK");
+    return { error: "저장 중 오류가 발생했습니다: " + e.message, client_id };
+  }
+}
+
+router.post("/convert", requireAuth, (req, res) => {
+  const result = insertConversion(req.body || {}, req.user.id);
+  if (result.error) return res.status(400).json(result);
+  const code = result.status === "created" ? 201 : 200;
+  res.status(code).json(result);
+});
+
+router.post("/convert/sync", requireAuth, (req, res) => {
+  const items = Array.isArray(req.body?.conversions) ? req.body.conversions : [];
+  const results = items.map((payload) => ({
+    client_id: payload.client_id,
+    ...insertConversion(payload, req.user.id),
+  }));
+  res.json({ results });
+});
+
 router.get("/", requireAuth, (req, res) => {
   const { warehouse_id, branch_id, item_id, type, from, to, limit } = req.query;
   const clauses = [];

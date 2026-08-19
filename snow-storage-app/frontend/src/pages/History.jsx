@@ -2,11 +2,12 @@ import React, { useEffect, useMemo, useState } from "react";
 import client from "../api/client.js";
 import { useAuth } from "../context/AuthContext.jsx";
 
-const TYPE_LABEL = { in: "입고", out: "출고", adjust: "조정" };
+const TYPE_LABEL = { in: "입고", out: "출고", adjust: "조정", convert: "전환" };
 const TYPE_STYLE = {
   in: "bg-emerald-100 text-emerald-700",
   out: "bg-rose-100 text-rose-700",
   adjust: "bg-amber-100 text-amber-700",
+  convert: "bg-violet-100 text-violet-700",
 };
 
 export default function History() {
@@ -84,6 +85,7 @@ export default function History() {
           <option value="in">입고</option>
           <option value="out">출고</option>
           <option value="adjust">조정</option>
+          <option value="convert">전환</option>
         </select>
         <input
           type="date"
@@ -141,7 +143,8 @@ export default function History() {
                     </span>
                   </td>
                   <td className="px-4 py-2 text-right font-medium">
-                    {r.quantity.toLocaleString()} {r.item_unit}
+                    {r.type === "convert" && r.delta > 0 ? "+" : ""}
+                    {(r.type === "convert" ? r.delta : r.quantity).toLocaleString()} {r.item_unit}
                   </td>
                   <td className="px-4 py-2">{r.user_name || "-"}</td>
                   <td className="px-4 py-2 text-slate-500">{r.memo || "-"}</td>

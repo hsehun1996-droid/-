@@ -10,7 +10,7 @@ import {
 } from "recharts";
 import client from "../api/client.js";
 
-const TYPE_LABEL = { in: "입고", out: "출고", adjust: "조정" };
+const TYPE_LABEL = { in: "입고", out: "출고", adjust: "조정", convert: "전환" };
 
 function StatCard({ label, value, accent }) {
   return (
@@ -109,7 +109,9 @@ export default function Dashboard() {
                   <span className="text-slate-400"> · {t.branch_name} {t.warehouse_name}</span>
                 </span>
                 <span className="text-slate-600">
-                  {TYPE_LABEL[t.type]} {t.quantity.toLocaleString()} {t.unit}
+                  {TYPE_LABEL[t.type]}{" "}
+                  {t.type === "convert" && t.delta > 0 ? "+" : ""}
+                  {(t.type === "convert" ? t.delta : t.quantity).toLocaleString()} {t.unit}
                 </span>
               </li>
             ))}

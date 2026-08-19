@@ -43,7 +43,7 @@ router.get("/summary", requireAuth, (req, res) => {
 
   const recent = db
     .prepare(
-      `SELECT t.id, t.type, t.quantity, t.occurred_at, t.memo,
+      `SELECT t.id, t.type, t.quantity, t.delta, t.occurred_at, t.memo,
               b.name AS branch_name, w.name AS warehouse_name,
               i.category, i.name AS item_form, i.unit, u.name AS user_name
        FROM transactions t

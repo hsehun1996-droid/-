@@ -74,7 +74,7 @@ for (const [branchName, warehouseNames] of Object.entries(BRANCH_WAREHOUSES)) {
 // 품목: 카테고리(대분류)별 형태(톤백/개포/염수) 구분. to_ton_factor는 해당 형태의 1단위가
 // 몇 톤에 해당하는지를 나타내며, 재고 합계 계산에 쓰임.
 upsertItem("소금(제설용)", "톤백", "톤", 1);
-upsertItem("소금(제설용)", "개포", "kg", 0.001); // 톤백 1개(1,000kg)를 개포해도 무게 그대로 kg로 환산
+upsertItem("소금(제설용)", "개포", "톤", 1); // 톤백을 개포해도 무게는 그대로(톤 단위 동일)
 upsertItem("염화칼슘", "톤백", "톤", 1);
 upsertItem("염화칼슘", "염수", "리터", 1 / 1935); // 염화칼슘 1톤으로 염수 1,935리터 제조 기준
 
@@ -105,7 +105,7 @@ upsertUser("field2", "field1234", "현장 창고 담당자(충주지사)", "fiel
 
 console.log("시드 데이터 생성 완료");
 console.log(`- 지사 ${Object.keys(BRANCH_WAREHOUSES).length}개, 창고 ${Object.values(warehousesByBranch).flat().length}개 생성`);
-console.log("- 품목: 소금(제설용) 톤백/개포(kg), 염화칼슘 톤백/염수(리터, 1톤=1,935리터 기준)");
+console.log("- 품목: 소금(제설용) 톤백/개포(톤), 염화칼슘 톤백/염수(리터, 1톤=1,935리터 기준)");
 console.log("- 지사별 비축기준(톤) 반영 완료");
 console.log("- admin / admin1234 (관리자)");
 console.log("- office1 / office1234 (사무실)");

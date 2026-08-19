@@ -70,7 +70,7 @@ CREATE TABLE IF NOT EXISTS transactions (
   client_id TEXT NOT NULL UNIQUE,
   warehouse_id INTEGER NOT NULL REFERENCES warehouses(id),
   item_id INTEGER NOT NULL REFERENCES items(id),
-  type TEXT NOT NULL CHECK(type IN ('in','out','adjust')),
+  type TEXT NOT NULL CHECK(type IN ('in','out','adjust','convert')),
   quantity REAL NOT NULL,
   delta REAL NOT NULL,
   memo TEXT,
