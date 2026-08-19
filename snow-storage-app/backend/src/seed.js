@@ -72,16 +72,25 @@ for (const [branchName, warehouseNames] of Object.entries(BRANCH_WAREHOUSES)) {
 }
 
 // 품목: 카테고리(대분류)별 형태(톤백/개포/염수) 구분. to_ton_factor는 해당 형태의 1단위가
-// 몇 톤에 해당하는지를 나타내며, 재고 합계 계산에 쓰임. 아래 값은 기본값(추정치)이므로
-// 관리자 계정으로 로그인 후 "품목 관리" 화면에서 실제 값으로 수정 가능.
-const CATEGORY_MIN_STOCK_TONS = { "소금(제설용)": 300, 염화칼슘: 200 };
+// 몇 톤에 해당하는지를 나타내며, 재고 합계 계산에 쓰임.
 upsertItem("소금(제설용)", "톤백", "톤", 1);
 upsertItem("소금(제설용)", "개포", "kg", 0.001); // 톤백 1개(1,000kg)를 개포해도 무게 그대로 kg로 환산
 upsertItem("염화칼슘", "톤백", "톤", 1);
 upsertItem("염화칼슘", "염수", "리터", 1 / 1935); // 염화칼슘 1톤으로 염수 1,935리터 제조 기준
 
-for (const branch of Object.values(branchesByName)) {
-  for (const [category, minTons] of Object.entries(CATEGORY_MIN_STOCK_TONS)) {
+// 지사별 비축기준(톤). 지사마다 실제 기준이 다름.
+const BRANCH_STOCK_TARGETS_TONS = {
+  진천지사: { "소금(제설용)": 3150, 염화칼슘: 294 },
+  제천지사: { "소금(제설용)": 2745, 염화칼슘: 342 },
+  충주지사: { "소금(제설용)": 2376, 염화칼슘: 228 },
+  보은지사: { "소금(제설용)": 2064, 염화칼슘: 360 },
+  엄정지사: { "소금(제설용)": 3159, 염화칼슘: 219 },
+  상주지사: { "소금(제설용)": 1911, 염화칼슘: 132 },
+};
+
+for (const [branchName, targets] of Object.entries(BRANCH_STOCK_TARGETS_TONS)) {
+  const branch = branchesByName[branchName];
+  for (const [category, minTons] of Object.entries(targets)) {
     upsertStockTarget(branch.id, category, minTons);
   }
 }
@@ -97,8 +106,7 @@ upsertUser("field2", "field1234", "현장 창고 담당자(충주지사)", "fiel
 console.log("시드 데이터 생성 완료");
 console.log(`- 지사 ${Object.keys(BRANCH_WAREHOUSES).length}개, 창고 ${Object.values(warehousesByBranch).flat().length}개 생성`);
 console.log("- 품목: 소금(제설용) 톤백/개포(kg), 염화칼슘 톤백/염수(리터, 1톤=1,935리터 기준)");
-console.log("  ※ 비축기준 소금 300톤·염화칼슘 200톤은 기본값입니다. 로그인 후 관리자 화면");
-console.log("    (품목 관리 / 비축기준 관리)에서 실제 값으로 수정하세요.");
+console.log("- 지사별 비축기준(톤) 반영 완료");
 console.log("- admin / admin1234 (관리자)");
 console.log("- office1 / office1234 (사무실)");
 console.log(`- field1 / field1234 (현장, 진천지사 - ${jincheonHq.name})`);
