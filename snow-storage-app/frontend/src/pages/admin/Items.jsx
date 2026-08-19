@@ -7,7 +7,7 @@ export default function AdminItems() {
   const [rows, setRows] = useState([]);
   const [form, setForm] = useState(EMPTY);
   const [error, setError] = useState("");
-  const [factorDrafts, setFactorDrafts] = useState({});
+  const [drafts, setDrafts] = useState({});
 
   function reload() {
     client.get("/items").then((res) => setRows(res.data));
@@ -37,15 +37,25 @@ export default function AdminItems() {
     }
   }
 
-  async function handleFactorSave(item) {
-    const draft = factorDrafts[item.id];
-    const value = Number(draft);
-    if (!draft || Number.isNaN(value) || value <= 0) {
+  function updateDraft(itemId, patch) {
+    setDrafts((d) => ({ ...d, [itemId]: { ...d[itemId], ...patch } }));
+  }
+
+  async function handleRowSave(item) {
+    const draft = drafts[item.id] || {};
+    const unit = draft.unit ?? item.unit;
+    const factorRaw = draft.to_ton_factor ?? item.to_ton_factor;
+    const factor = Number(factorRaw);
+    if (!unit.trim()) {
+      alert("단위를 입력하세요.");
+      return;
+    }
+    if (Number.isNaN(factor) || factor <= 0) {
       alert("환산계수는 0보다 큰 숫자여야 합니다.");
       return;
     }
-    await client.put(`/items/${item.id}`, { ...item, to_ton_factor: value });
-    setFactorDrafts((d) => ({ ...d, [item.id]: undefined }));
+    await client.put(`/items/${item.id}`, { ...item, unit, to_ton_factor: factor });
+    setDrafts((d) => ({ ...d, [item.id]: undefined }));
     reload();
   }
 
@@ -124,22 +134,30 @@ export default function AdminItems() {
               </tr>
             </thead>
             <tbody>
-              {list.map((it) => (
+              {list.map((it) => {
+                const draft = drafts[it.id];
+                return (
                 <tr key={it.id} className="border-b last:border-0">
                   <td className="px-4 py-2 font-medium text-slate-800">{it.name}</td>
-                  <td className="px-4 py-2">{it.unit}</td>
+                  <td className="px-4 py-2">
+                    <input
+                      className="border border-slate-300 rounded-lg px-2 py-1 w-20"
+                      value={draft?.unit ?? it.unit}
+                      onChange={(e) => updateDraft(it.id, { unit: e.target.value })}
+                    />
+                  </td>
                   <td className="px-4 py-2">
                     <div className="flex items-center gap-2">
                       <input
                         type="number"
-                        step="0.0001"
-                        className="border border-slate-300 rounded-lg px-2 py-1 w-28"
-                        value={factorDrafts[it.id] ?? it.to_ton_factor}
-                        onChange={(e) => setFactorDrafts((d) => ({ ...d, [it.id]: e.target.value }))}
+                        step="0.000001"
+                        className="border border-slate-300 rounded-lg px-2 py-1 w-32"
+                        value={draft?.to_ton_factor ?? it.to_ton_factor}
+                        onChange={(e) => updateDraft(it.id, { to_ton_factor: e.target.value })}
                       />
-                      {factorDrafts[it.id] != null && (
+                      {draft != null && (
                         <button
-                          onClick={() => handleFactorSave(it)}
+                          onClick={() => handleRowSave(it)}
                           className="text-xs bg-brand-700 text-white px-2 py-1 rounded"
                         >
                           저장
@@ -153,7 +171,8 @@ export default function AdminItems() {
                     </button>
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>
