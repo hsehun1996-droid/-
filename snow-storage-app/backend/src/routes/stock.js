@@ -31,7 +31,7 @@ router.get("/", requireAuth, (req, res) => {
        LEFT JOIN transactions t ON t.warehouse_id = w.id AND t.item_id = i.id
        ${where}
        GROUP BY w.id, i.id
-       ORDER BY b.name, w.name, i.category, i.name`
+       ORDER BY b.sort_order, b.name, w.name, i.category, i.sort_order`
     )
     .all(...params);
   res.json(rows);
@@ -61,7 +61,7 @@ router.get("/branch-summary", requireAuth, (req, res) => {
        LEFT JOIN stock_targets st ON st.branch_id = b.id AND st.category = i.category
        ${where}
        GROUP BY b.id, i.category
-       ORDER BY b.name, i.category`
+       ORDER BY b.sort_order, b.name, i.category`
     )
     .all(...params);
   res.json(rows);

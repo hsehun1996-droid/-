@@ -10,7 +10,7 @@ router.get("/", requireAuth, (req, res) => {
       `SELECT st.id, st.branch_id, b.name AS branch_name, st.category, st.min_stock_tons
        FROM stock_targets st
        JOIN branches b ON b.id = st.branch_id
-       ORDER BY b.name, st.category`
+       ORDER BY b.sort_order, b.name, st.category`
     )
     .all();
   res.json(rows);

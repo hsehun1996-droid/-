@@ -1,10 +1,12 @@
 const bcrypt = require("bcryptjs");
 const db = require("./db");
 
-function upsertBranch(name) {
+function upsertBranch(name, sortOrder) {
   const existing = db.prepare("SELECT * FROM branches WHERE name = ?").get(name);
   if (existing) return existing;
-  const info = db.prepare("INSERT INTO branches (name) VALUES (?)").run(name);
+  const info = db
+    .prepare("INSERT INTO branches (name, sort_order) VALUES (?, ?)")
+    .run(name, sortOrder);
   return db.prepare("SELECT * FROM branches WHERE id = ?").get(info.lastInsertRowid);
 }
 
@@ -19,14 +21,14 @@ function upsertWarehouse(branchId, name) {
   return db.prepare("SELECT * FROM warehouses WHERE id = ?").get(info.lastInsertRowid);
 }
 
-function upsertItem(category, name, unit, to_ton_factor) {
+function upsertItem(category, name, unit, to_ton_factor, sortOrder) {
   const existing = db
     .prepare("SELECT * FROM items WHERE category = ? AND name = ?")
     .get(category, name);
   if (existing) return existing;
   const info = db
-    .prepare("INSERT INTO items (name, category, unit, to_ton_factor) VALUES (?, ?, ?, ?)")
-    .run(name, category, unit, to_ton_factor);
+    .prepare("INSERT INTO items (name, category, unit, to_ton_factor, sort_order) VALUES (?, ?, ?, ?, ?)")
+    .run(name, category, unit, to_ton_factor, sortOrder);
   return db.prepare("SELECT * FROM items WHERE id = ?").get(info.lastInsertRowid);
 }
 
@@ -65,18 +67,18 @@ const BRANCH_WAREHOUSES = {
 
 const branchesByName = {};
 const warehousesByBranch = {};
-for (const [branchName, warehouseNames] of Object.entries(BRANCH_WAREHOUSES)) {
-  const branch = upsertBranch(branchName);
+Object.entries(BRANCH_WAREHOUSES).forEach(([branchName, warehouseNames], index) => {
+  const branch = upsertBranch(branchName, index);
   branchesByName[branchName] = branch;
   warehousesByBranch[branchName] = warehouseNames.map((wname) => upsertWarehouse(branch.id, wname));
-}
+});
 
 // 품목: 카테고리(대분류)별 형태(톤백/개포/염수) 구분. to_ton_factor는 해당 형태의 1단위가
-// 몇 톤에 해당하는지를 나타내며, 재고 합계 계산에 쓰임.
-upsertItem("소금(제설용)", "톤백", "톤", 1);
-upsertItem("소금(제설용)", "개포", "톤", 1); // 톤백을 개포해도 무게는 그대로(톤 단위 동일)
-upsertItem("염화칼슘", "톤백", "톤", 1);
-upsertItem("염화칼슘", "염수", "리터", 1 / 1935); // 염화칼슘 1톤으로 염수 1,935리터 제조 기준
+// 몇 톤에 해당하는지를 나타내며, 재고 합계 계산에 쓰임. sort_order로 톤백이 항상 먼저 표시됨.
+upsertItem("소금(제설용)", "톤백", "톤", 1, 0);
+upsertItem("소금(제설용)", "개포", "톤", 1, 1); // 톤백을 개포해도 무게는 그대로(톤 단위 동일)
+upsertItem("염화칼슘", "톤백", "톤", 1, 0);
+upsertItem("염화칼슘", "염수", "리터", 1 / 1935, 1); // 염화칼슘 1톤으로 염수 1,935리터 제조 기준
 
 // 지사별 비축기준(톤). 지사마다 실제 기준이 다름.
 const BRANCH_STOCK_TARGETS_TONS = {

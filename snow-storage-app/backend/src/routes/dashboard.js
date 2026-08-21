@@ -23,7 +23,7 @@ router.get("/summary", requireAuth, requireRole("admin", "office"), (req, res) =
        LEFT JOIN transactions t ON t.warehouse_id = w.id AND t.item_id = i.id
        LEFT JOIN stock_targets st ON st.branch_id = b.id AND st.category = i.category
        GROUP BY b.id, i.category
-       ORDER BY b.name, i.category`
+       ORDER BY b.sort_order, b.name, i.category`
     )
     .all();
 

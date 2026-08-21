@@ -63,17 +63,41 @@ export async function submitConversion(payload0) {
   }
 }
 
+// 예비살포/본살포 출고 등록: 입출고와 동일하게 오프라인 큐잉 지원
+export async function submitSpray(payload0) {
+  const payload = { ...payload0, client_id: payload0.client_id || newClientId(), kind: "spray" };
+  if (navigator.onLine) {
+    try {
+      const res = await client.post("/transactions/spray", payload);
+      return { ...res.data, queued: false };
+    } catch (e) {
+      if (!e.response) {
+        await addPending(payload);
+        notify();
+        return { status: "queued", queued: true };
+      }
+      throw e;
+    }
+  } else {
+    await addPending(payload);
+    notify();
+    return { status: "queued", queued: true };
+  }
+}
+
 export async function flushQueue() {
   const pending = await getAllPending();
   if (!pending.length) return { synced: 0, failed: 0 };
 
-  const transactions = pending.filter((p) => p.kind !== "convert");
+  const transactions = pending.filter((p) => p.kind !== "convert" && p.kind !== "spray");
   const conversions = pending.filter((p) => p.kind === "convert");
+  const sprays = pending.filter((p) => p.kind === "spray");
   let synced = 0;
 
-  if (transactions.length) {
+  async function flushBatch(url, key, batch) {
+    if (!batch.length) return;
     try {
-      const res = await client.post("/transactions/sync", { transactions });
+      const res = await client.post(url, { [key]: batch });
       for (const result of res.data.results) {
         if (result.status === "created" || result.status === "duplicate") {
           await removePending(result.client_id);
@@ -85,19 +109,9 @@ export async function flushQueue() {
     }
   }
 
-  if (conversions.length) {
-    try {
-      const res = await client.post("/transactions/convert/sync", { conversions });
-      for (const result of res.data.results) {
-        if (result.status === "created" || result.status === "duplicate") {
-          await removePending(result.client_id);
-          synced++;
-        }
-      }
-    } catch (e) {
-      // 네트워크 오류: 다음 재시도 때 다시 시도
-    }
-  }
+  await flushBatch("/transactions/sync", "transactions", transactions);
+  await flushBatch("/transactions/convert/sync", "conversions", conversions);
+  await flushBatch("/transactions/spray/sync", "sprays", sprays);
 
   notify();
   return { synced, failed: pending.length - synced };

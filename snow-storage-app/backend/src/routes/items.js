@@ -5,7 +5,7 @@ const { requireAuth, requireRole } = require("../auth");
 const router = express.Router();
 
 router.get("/", requireAuth, (req, res) => {
-  const rows = db.prepare("SELECT * FROM items ORDER BY category, name").all();
+  const rows = db.prepare("SELECT * FROM items ORDER BY category, sort_order, name").all();
   res.json(rows);
 });
 
@@ -15,9 +15,12 @@ router.post("/", requireAuth, requireRole("admin", "office"), (req, res) => {
     return res.status(400).json({ error: "품목명, 카테고리, 단위를 입력하세요." });
   }
   try {
+    const nextOrder = db
+      .prepare("SELECT COALESCE(MAX(sort_order), -1) + 1 AS n FROM items WHERE category = ?")
+      .get(category).n;
     const info = db
-      .prepare("INSERT INTO items (name, category, unit, to_ton_factor) VALUES (?, ?, ?, ?)")
-      .run(name, category, unit, to_ton_factor ?? 1);
+      .prepare("INSERT INTO items (name, category, unit, to_ton_factor, sort_order) VALUES (?, ?, ?, ?, ?)")
+      .run(name, category, unit, to_ton_factor ?? 1, nextOrder);
     res.status(201).json(db.prepare("SELECT * FROM items WHERE id = ?").get(info.lastInsertRowid));
   } catch (e) {
     res.status(400).json({ error: "같은 카테고리에 이미 존재하는 형태명입니다." });

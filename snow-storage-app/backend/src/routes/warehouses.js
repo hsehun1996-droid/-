@@ -19,7 +19,7 @@ router.get("/", requireAuth, (req, res) => {
        FROM warehouses w
        JOIN branches b ON b.id = w.branch_id
        ${where}
-       ORDER BY b.name, w.name`
+       ORDER BY b.sort_order, b.name, w.name`
     )
     .all(...params);
   res.json(rows);

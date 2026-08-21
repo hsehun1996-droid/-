@@ -118,6 +118,111 @@ function insertConversion(payload, userId) {
   }
 }
 
+// 출고(예비살포/본살포): 살포 유형과 대수만으로 염화칼슘·소금 출고량을 자동 계산해
+// 같은 창고에서 두 품목을 동시에 차감한다(형태는 화면에서 선택).
+const SPRAY_LABELS = { preliminary: "예비살포", main: "본살포" };
+const SPRAY_RATES_PER_UNIT = {
+  preliminary: { 염화칼슘: 0.8, "소금(제설용)": 4 },
+  main: { 염화칼슘: 1.6, "소금(제설용)": 8 },
+};
+
+function insertSpray(payload, userId) {
+  const { client_id, warehouse_id, spray_type, count, calcium_item_id, salt_item_id, memo, occurred_at } =
+    payload;
+  if (
+    !client_id ||
+    !warehouse_id ||
+    !spray_type ||
+    count == null ||
+    !calcium_item_id ||
+    !salt_item_id ||
+    !occurred_at
+  ) {
+    return { error: "필수 항목이 누락되었습니다.", client_id };
+  }
+  if (!SPRAY_RATES_PER_UNIT[spray_type]) {
+    return { error: "유효하지 않은 살포 유형입니다.", client_id };
+  }
+  const countNum = Math.abs(Number(count));
+  if (!countNum) {
+    return { error: "대수를 입력하세요.", client_id };
+  }
+
+  const calciumClientId = `${client_id}:calcium`;
+  const existing = db.prepare("SELECT * FROM transactions WHERE client_id = ?").get(calciumClientId);
+  if (existing) {
+    const saltRow = db
+      .prepare("SELECT * FROM transactions WHERE client_id = ?")
+      .get(`${client_id}:salt`);
+    return { status: "duplicate", transactions: [existing, saltRow].filter(Boolean) };
+  }
+
+  const calciumItem = db.prepare("SELECT * FROM items WHERE id = ?").get(calcium_item_id);
+  const saltItem = db.prepare("SELECT * FROM items WHERE id = ?").get(salt_item_id);
+  if (!calciumItem || !saltItem) {
+    return { error: "품목을 찾을 수 없습니다.", client_id };
+  }
+  if (calciumItem.category !== "염화칼슘" || saltItem.category !== "소금(제설용)") {
+    return { error: "염화칼슘·소금(제설용) 형태를 각각 선택하세요.", client_id };
+  }
+
+  const rates = SPRAY_RATES_PER_UNIT[spray_type];
+  const calciumQty = (countNum * rates["염화칼슘"]) / calciumItem.to_ton_factor;
+  const saltQty = (countNum * rates["소금(제설용)"]) / saltItem.to_ton_factor;
+  const label = `${SPRAY_LABELS[spray_type]} ${countNum}대${memo ? " · " + memo : ""}`;
+
+  try {
+    db.exec("BEGIN");
+    const infoCalcium = db
+      .prepare(
+        `INSERT INTO transactions
+          (client_id, warehouse_id, item_id, type, quantity, delta, memo, user_id, occurred_at)
+         VALUES (?, ?, ?, 'out', ?, ?, ?, ?, ?)`
+      )
+      .run(calciumClientId, warehouse_id, calcium_item_id, calciumQty, -calciumQty, label, userId, occurred_at);
+    const infoSalt = db
+      .prepare(
+        `INSERT INTO transactions
+          (client_id, warehouse_id, item_id, type, quantity, delta, memo, user_id, occurred_at)
+         VALUES (?, ?, ?, 'out', ?, ?, ?, ?, ?)`
+      )
+      .run(`${client_id}:salt`, warehouse_id, salt_item_id, saltQty, -saltQty, label, userId, occurred_at);
+    db.exec("COMMIT");
+    return {
+      status: "created",
+      transactions: [
+        db.prepare("SELECT * FROM transactions WHERE id = ?").get(infoCalcium.lastInsertRowid),
+        db.prepare("SELECT * FROM transactions WHERE id = ?").get(infoSalt.lastInsertRowid),
+      ],
+    };
+  } catch (e) {
+    db.exec("ROLLBACK");
+    return { error: "저장 중 오류가 발생했습니다: " + e.message, client_id };
+  }
+}
+
+router.post("/spray", requireAuth, (req, res) => {
+  const payload = req.body || {};
+  if (!canAccessWarehouse(req.user, payload.warehouse_id)) {
+    return res.status(403).json({ error: "소속 지사의 창고에만 기록할 수 있습니다." });
+  }
+  const result = insertSpray(payload, req.user.id);
+  if (result.error) return res.status(400).json(result);
+  const code = result.status === "created" ? 201 : 200;
+  res.status(code).json(result);
+});
+
+router.post("/spray/sync", requireAuth, (req, res) => {
+  const items = Array.isArray(req.body?.sprays) ? req.body.sprays : [];
+  const results = items.map((payload) => {
+    if (!canAccessWarehouse(req.user, payload.warehouse_id)) {
+      return { client_id: payload.client_id, error: "소속 지사의 창고에만 기록할 수 있습니다." };
+    }
+    return { client_id: payload.client_id, ...insertSpray(payload, req.user.id) };
+  });
+  res.json({ results });
+});
+
 router.post("/convert", requireAuth, (req, res) => {
   const payload = req.body || {};
   if (!canAccessWarehouse(req.user, payload.warehouse_id)) {

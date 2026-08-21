@@ -5,7 +5,7 @@ const { requireAuth, requireRole } = require("../auth");
 const router = express.Router();
 
 router.get("/", requireAuth, (req, res) => {
-  const rows = db.prepare("SELECT * FROM branches ORDER BY name").all();
+  const rows = db.prepare("SELECT * FROM branches ORDER BY sort_order, name").all();
   res.json(rows);
 });
 
@@ -13,7 +13,10 @@ router.post("/", requireAuth, requireRole("admin", "office"), (req, res) => {
   const { name } = req.body || {};
   if (!name) return res.status(400).json({ error: "지사명을 입력하세요." });
   try {
-    const info = db.prepare("INSERT INTO branches (name) VALUES (?)").run(name);
+    const nextOrder = db.prepare("SELECT COALESCE(MAX(sort_order), 0) + 1 AS n FROM branches").get().n;
+    const info = db
+      .prepare("INSERT INTO branches (name, sort_order) VALUES (?, ?)")
+      .run(name, nextOrder);
     res.status(201).json(db.prepare("SELECT * FROM branches WHERE id = ?").get(info.lastInsertRowid));
   } catch (e) {
     res.status(400).json({ error: "이미 존재하는 지사명입니다." });
