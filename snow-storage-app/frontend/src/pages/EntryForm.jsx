@@ -11,9 +11,10 @@ const TYPE_OPTIONS = [
 
 const IN_CATEGORY_ORDER = ["염화칼슘", "소금(제설용)"];
 
+// 염화칼슘은 항상 염수(리터)로 고정 차감, 소금은 화면에서 선택한 형태로 톤 환산 차감
 const SPRAY_OPTIONS = [
-  { value: "preliminary", label: "예비살포", rates: { 염화칼슘: 0.8, "소금(제설용)": 4 } },
-  { value: "main", label: "본살포", rates: { 염화칼슘: 1.6, "소금(제설용)": 8 } },
+  { value: "preliminary", label: "예비살포", calciumBrineLiters: 1500, saltTons: 4 },
+  { value: "main", label: "본살포", calciumBrineLiters: 3000, saltTons: 8 },
 ];
 
 function todayStr() {
@@ -23,6 +24,7 @@ function todayStr() {
 export default function EntryForm() {
   const { user } = useAuth();
   const [branches, setBranches] = useState([]);
+  const [allBranches, setAllBranches] = useState([]);
   const [warehouses, setWarehouses] = useState([]);
   const [items, setItems] = useState([]);
   const [branchId, setBranchId] = useState("");
@@ -34,15 +36,16 @@ export default function EntryForm() {
   const [itemId, setItemId] = useState("");
   const [quantity, setQuantity] = useState("");
 
-  // 출고 (예비살포/본살포)
+  // 출고 (예비살포/본살포) — 염화칼슘은 항상 염수로 고정 차감되어 형태 선택이 없음
   const [sprayType, setSprayType] = useState("preliminary");
   const [count, setCount] = useState("");
-  const [calciumItemId, setCalciumItemId] = useState("");
   const [saltItemId, setSaltItemId] = useState("");
 
-  // 전환
+  // 전환 (같은 창고 또는 다른 창고/지사로)
   const [fromItemId, setFromItemId] = useState("");
   const [toItemId, setToItemId] = useState("");
+  const [destBranchId, setDestBranchId] = useState("");
+  const [destWarehouseId, setDestWarehouseId] = useState("");
 
   const [occurredAt, setOccurredAt] = useState(todayStr());
   const [memo, setMemo] = useState("");
@@ -58,6 +61,8 @@ export default function EntryForm() {
         ? branchRes.data.filter((b) => b.id === user.branch_id)
         : branchRes.data;
       setBranches(visibleBranches);
+      // 전환 목적지 선택은 소속 지사와 무관하게 전체 지사/창고 중에서 고를 수 있어야 한다.
+      setAllBranches(branchRes.data);
       setWarehouses(warehouseRes.data);
       const initialBranchId = isField ? user.branch_id : visibleBranches[0]?.id || "";
       setBranchId(String(initialBranchId || ""));
@@ -119,30 +124,29 @@ export default function EntryForm() {
     }
   }, [type, itemsInCategory, itemId]);
 
-  // 출고: 염화칼슘/소금(제설용) 형태 선택 목록 및 기본값
-  const calciumItems = categories.get("염화칼슘") || [];
+  // 출고: 소금(제설용) 형태 선택 목록 및 기본값. 염화칼슘은 항상 염수(리터)로 고정 차감.
   const saltItems = categories.get("소금(제설용)") || [];
+  const brineItem = useMemo(
+    () => items.find((it) => it.category === "염화칼슘" && it.name === "염수"),
+    [items]
+  );
 
   useEffect(() => {
     if (type !== "out") return;
-    if (!calciumItems.some((it) => String(it.id) === calciumItemId)) {
-      setCalciumItemId(String(calciumItems[0]?.id || ""));
-    }
     if (!saltItems.some((it) => String(it.id) === saltItemId)) {
       setSaltItemId(String(saltItems[0]?.id || ""));
     }
-  }, [type, calciumItems, saltItems, calciumItemId, saltItemId]);
+  }, [type, saltItems, saltItemId]);
 
   const sprayOption = SPRAY_OPTIONS.find((o) => o.value === sprayType);
-  const calciumItem = items.find((it) => String(it.id) === calciumItemId);
   const saltItem = items.find((it) => String(it.id) === saltItemId);
   const sprayPreview = useMemo(() => {
-    if (!sprayOption || !calciumItem || !saltItem || !count) return null;
+    if (!sprayOption || !saltItem || !count) return null;
     const n = Number(count);
-    const calciumQty = (n * sprayOption.rates["염화칼슘"]) / calciumItem.to_ton_factor;
-    const saltQty = (n * sprayOption.rates["소금(제설용)"]) / saltItem.to_ton_factor;
+    const calciumQty = n * sprayOption.calciumBrineLiters;
+    const saltQty = (n * sprayOption.saltTons) / saltItem.to_ton_factor;
     return { calciumQty, saltQty };
-  }, [sprayOption, calciumItem, saltItem, count]);
+  }, [sprayOption, saltItem, count]);
 
   // 전환: 전환 전 형태 선택에 따라 같은 카테고리의 다른 형태만 전환 후 옵션으로 노출
   useEffect(() => {
@@ -166,6 +170,26 @@ export default function EntryForm() {
     }
   }, [type, toItemOptions, toItemId]);
 
+  // 전환 목적지: 기본값은 전환 전(소스) 지사/창고와 동일하되, 다른 지사/창고(또는
+  // 현장염수분사장치)로 자유롭게 바꿀 수 있다.
+  useEffect(() => {
+    if (type !== "convert") return;
+    setDestBranchId((prev) => prev || branchId);
+  }, [type, branchId]);
+
+  const destWarehousesInBranch = useMemo(
+    () => warehouses.filter((w) => String(w.branch_id) === String(destBranchId)),
+    [warehouses, destBranchId]
+  );
+
+  useEffect(() => {
+    if (type !== "convert") return;
+    if (!destWarehousesInBranch.some((w) => String(w.id) === destWarehouseId)) {
+      const fallback = destWarehousesInBranch.find((w) => String(w.id) === warehouseId);
+      setDestWarehouseId(String(fallback?.id || destWarehousesInBranch[0]?.id || ""));
+    }
+  }, [type, destWarehousesInBranch, destWarehouseId, warehouseId]);
+
   const convertedPreview = useMemo(() => {
     if (!fromItem || !toItem || !quantity) return null;
     const tons = Number(quantity) * fromItem.to_ton_factor;
@@ -187,7 +211,7 @@ export default function EntryForm() {
       setMessage({ type: "error", text: "품목과 수량을 확인하세요." });
       return;
     }
-    if (type === "out" && (!calciumItemId || !saltItemId || !count || Number(count) <= 0)) {
+    if (type === "out" && (!saltItemId || !count || Number(count) <= 0)) {
       setMessage({ type: "error", text: "형태와 대수를 확인하세요." });
       return;
     }
@@ -199,6 +223,7 @@ export default function EntryForm() {
       if (type === "convert") {
         result = await submitConversion({
           warehouse_id: Number(warehouseId),
+          to_warehouse_id: Number(destWarehouseId || warehouseId),
           from_item_id: Number(fromItemId),
           to_item_id: Number(toItemId),
           quantity: Number(quantity),
@@ -210,7 +235,6 @@ export default function EntryForm() {
           warehouse_id: Number(warehouseId),
           spray_type: sprayType,
           count: Number(count),
-          calcium_item_id: Number(calciumItemId),
           salt_item_id: Number(saltItemId),
           occurred_at: occurredAt,
           memo,
@@ -280,7 +304,8 @@ export default function EntryForm() {
           </div>
           {type === "convert" && (
             <p className="text-xs text-slate-500 mt-2">
-              같은 창고 안에서 형태만 바꿉니다 (예: 톤백 → 개포). 재고 총량(톤)은 변하지 않습니다.
+              형태를 바꿔서 같은 창고 또는 다른 창고(다른 지사 포함, 현장염수분사장치 포함)로 옮깁니다.
+              전체 톤 환산 총량은 변하지 않습니다.
             </p>
           )}
         </div>
@@ -407,17 +432,9 @@ export default function EntryForm() {
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-semibold text-slate-700 mb-2">염화칼슘 형태</label>
-                <select
-                  className="w-full border border-slate-300 rounded-lg px-3 py-3 text-base bg-white"
-                  value={calciumItemId}
-                  onChange={(e) => setCalciumItemId(e.target.value)}
-                >
-                  {calciumItems.map((it) => (
-                    <option key={it.id} value={it.id}>
-                      {it.name} ({it.unit})
-                    </option>
-                  ))}
-                </select>
+                <div className="w-full border border-slate-200 bg-slate-100 rounded-lg px-3 py-3 text-base text-slate-500">
+                  염수 (리터) 고정
+                </div>
               </div>
               <div>
                 <label className="block text-sm font-semibold text-slate-700 mb-2">소금 형태</label>
@@ -439,8 +456,8 @@ export default function EntryForm() {
               <p className="text-sm text-slate-500 text-center">
                 → 출고 예정{" "}
                 <span className="font-semibold text-rose-700">
-                  염화칼슘 {sprayPreview.calciumQty.toLocaleString(undefined, { maximumFractionDigits: 3 })}{" "}
-                  {calciumItem?.unit}
+                  염화칼슘(염수) {sprayPreview.calciumQty.toLocaleString(undefined, { maximumFractionDigits: 3 })}{" "}
+                  {brineItem?.unit || "리터"}
                 </span>
                 {" · "}
                 <span className="font-semibold text-rose-700">
@@ -489,6 +506,37 @@ export default function EntryForm() {
                 {toItemOptions.length === 0 && (
                   <p className="text-xs text-red-600 mt-1">이 품목에는 전환할 다른 형태가 없습니다.</p>
                 )}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-2">목적지 지사</label>
+                <select
+                  className="w-full border border-slate-300 rounded-lg px-3 py-3 text-base bg-white"
+                  value={destBranchId}
+                  onChange={(e) => setDestBranchId(e.target.value)}
+                >
+                  {allBranches.map((b) => (
+                    <option key={b.id} value={b.id}>
+                      {b.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-2">목적지 창고</label>
+                <select
+                  className="w-full border border-slate-300 rounded-lg px-3 py-3 text-base bg-white"
+                  value={destWarehouseId}
+                  onChange={(e) => setDestWarehouseId(e.target.value)}
+                >
+                  {destWarehousesInBranch.map((w) => (
+                    <option key={w.id} value={w.id}>
+                      {w.name}
+                    </option>
+                  ))}
+                </select>
               </div>
             </div>
 

@@ -55,15 +55,26 @@ function insertTransaction(tx, userId) {
   }
 }
 
-// 전환: 같은 카테고리 내에서 형태만 바꿔 재기록(예: 톤백 -> 개포). 재고 총량(톤)은
-// 변하지 않고, 창고 내 형태별 수량만 이동한다. 두 개의 ledger row(감소/증가)로 기록.
+// 전환: 같은 카테고리 내에서 형태만 바꿔 재기록(예: 톤백 -> 개포). 목적지 창고를
+// 출발 창고와 다르게 지정하면(타지사 포함) 형태 변경과 동시에 재고 이동도 된다.
+// 톤 환산 총량은 변하지 않고, 두 개의 ledger row(감소/증가)로 기록한다.
 function insertConversion(payload, userId) {
-  const { client_id, warehouse_id, from_item_id, to_item_id, quantity, memo, occurred_at } = payload;
+  const {
+    client_id,
+    warehouse_id,
+    to_warehouse_id,
+    from_item_id,
+    to_item_id,
+    quantity,
+    memo,
+    occurred_at,
+  } = payload;
+  const destWarehouseId = to_warehouse_id || warehouse_id;
   if (!client_id || !warehouse_id || !from_item_id || !to_item_id || quantity == null || !occurred_at) {
     return { error: "필수 항목이 누락되었습니다.", client_id };
   }
-  if (from_item_id === to_item_id) {
-    return { error: "전환 전/후 형태가 같을 수 없습니다.", client_id };
+  if (from_item_id === to_item_id && warehouse_id === destWarehouseId) {
+    return { error: "전환 전/후 형태나 창고 중 하나는 달라야 합니다.", client_id };
   }
 
   const fromClientId = `${client_id}:from`;
@@ -75,6 +86,10 @@ function insertConversion(payload, userId) {
     return { status: "duplicate", transactions: [existing, toRow].filter(Boolean) };
   }
 
+  const destWarehouse = db.prepare("SELECT * FROM warehouses WHERE id = ?").get(destWarehouseId);
+  if (!destWarehouse) {
+    return { error: "목적지 창고를 찾을 수 없습니다.", client_id };
+  }
   const fromItem = db.prepare("SELECT * FROM items WHERE id = ?").get(from_item_id);
   const toItem = db.prepare("SELECT * FROM items WHERE id = ?").get(to_item_id);
   if (!fromItem || !toItem) {
@@ -103,7 +118,7 @@ function insertConversion(payload, userId) {
           (client_id, warehouse_id, item_id, type, quantity, delta, memo, user_id, occurred_at)
          VALUES (?, ?, ?, 'convert', ?, ?, ?, ?, ?)`
       )
-      .run(`${client_id}:to`, warehouse_id, to_item_id, toQty, toQty, memo || null, userId, occurred_at);
+      .run(`${client_id}:to`, destWarehouseId, to_item_id, toQty, toQty, memo || null, userId, occurred_at);
     db.exec("COMMIT");
     return {
       status: "created",
@@ -119,28 +134,18 @@ function insertConversion(payload, userId) {
 }
 
 // 출고(예비살포/본살포): 살포 유형과 대수만으로 염화칼슘·소금 출고량을 자동 계산해
-// 같은 창고에서 두 품목을 동시에 차감한다(형태는 화면에서 선택).
+// 같은 창고에서 두 품목을 동시에 차감한다. 염화칼슘은 항상 염수(리터)로 고정 차감,
+// 소금은 화면에서 선택한 형태(톤백/개포)로 톤 환산해 차감한다.
 const SPRAY_LABELS = { preliminary: "예비살포", main: "본살포" };
-const SPRAY_RATES_PER_UNIT = {
-  preliminary: { 염화칼슘: 0.8, "소금(제설용)": 4 },
-  main: { 염화칼슘: 1.6, "소금(제설용)": 8 },
-};
+const SPRAY_CALCIUM_BRINE_LITERS = { preliminary: 1500, main: 3000 };
+const SPRAY_SALT_TONS_PER_UNIT = { preliminary: 4, main: 8 };
 
 function insertSpray(payload, userId) {
-  const { client_id, warehouse_id, spray_type, count, calcium_item_id, salt_item_id, memo, occurred_at } =
-    payload;
-  if (
-    !client_id ||
-    !warehouse_id ||
-    !spray_type ||
-    count == null ||
-    !calcium_item_id ||
-    !salt_item_id ||
-    !occurred_at
-  ) {
+  const { client_id, warehouse_id, spray_type, count, salt_item_id, memo, occurred_at } = payload;
+  if (!client_id || !warehouse_id || !spray_type || count == null || !salt_item_id || !occurred_at) {
     return { error: "필수 항목이 누락되었습니다.", client_id };
   }
-  if (!SPRAY_RATES_PER_UNIT[spray_type]) {
+  if (!SPRAY_CALCIUM_BRINE_LITERS[spray_type]) {
     return { error: "유효하지 않은 살포 유형입니다.", client_id };
   }
   const countNum = Math.abs(Number(count));
@@ -157,19 +162,24 @@ function insertSpray(payload, userId) {
     return { status: "duplicate", transactions: [existing, saltRow].filter(Boolean) };
   }
 
-  const calciumItem = db.prepare("SELECT * FROM items WHERE id = ?").get(calcium_item_id);
+  const calciumItem = db
+    .prepare("SELECT * FROM items WHERE category = ? AND name = ?")
+    .get("염화칼슘", "염수");
   const saltItem = db.prepare("SELECT * FROM items WHERE id = ?").get(salt_item_id);
-  if (!calciumItem || !saltItem) {
+  if (!calciumItem) {
+    return { error: "염화칼슘 염수 품목을 찾을 수 없습니다. 품목 관리에서 확인하세요.", client_id };
+  }
+  if (!saltItem) {
     return { error: "품목을 찾을 수 없습니다.", client_id };
   }
-  if (calciumItem.category !== "염화칼슘" || saltItem.category !== "소금(제설용)") {
-    return { error: "염화칼슘·소금(제설용) 형태를 각각 선택하세요.", client_id };
+  if (saltItem.category !== "소금(제설용)") {
+    return { error: "소금(제설용) 형태를 선택하세요.", client_id };
   }
 
-  const rates = SPRAY_RATES_PER_UNIT[spray_type];
-  const calciumQty = (countNum * rates["염화칼슘"]) / calciumItem.to_ton_factor;
-  const saltQty = (countNum * rates["소금(제설용)"]) / saltItem.to_ton_factor;
+  const calciumQty = countNum * SPRAY_CALCIUM_BRINE_LITERS[spray_type];
+  const saltQty = (countNum * SPRAY_SALT_TONS_PER_UNIT[spray_type]) / saltItem.to_ton_factor;
   const label = `${SPRAY_LABELS[spray_type]} ${countNum}대${memo ? " · " + memo : ""}`;
+  const calcium_item_id = calciumItem.id;
 
   try {
     db.exec("BEGIN");

@@ -1,11 +1,13 @@
 const express = require("express");
 const db = require("../db");
-const { requireAuth, requireRole, effectiveBranchId } = require("../auth");
+const { requireAuth, requireRole } = require("../auth");
 
 const router = express.Router();
 
+// 창고 목록(이름·소속 지사)은 전환 시 타지사 목적지 선택 등에 필요해 모든 역할에
+// 공개한다. 재고 수량·이력 등 민감한 데이터는 각 라우트에서 별도로 지사 범위를 강제.
 router.get("/", requireAuth, (req, res) => {
-  const branchId = effectiveBranchId(req.user, req.query.branch_id);
+  const { branch_id: branchId } = req.query;
   const clauses = [];
   const params = [];
   if (branchId) {
