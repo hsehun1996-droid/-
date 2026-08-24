@@ -148,7 +148,8 @@ export default function EntryForm() {
     return { calciumQty, saltQty };
   }, [sprayOption, saltItem, count]);
 
-  // 전환: 전환 전 형태 선택에 따라 같은 카테고리의 다른 형태만 전환 후 옵션으로 노출
+  // 전환: 전환 후 형태는 같은 카테고리의 형태(예: 톤백/개포, 톤백/염수)를 모두 보여준다.
+  // 전환 전과 같은 형태를 골라도 목적지 창고만 다르면 유효한 이동(형태는 그대로, 창고만 변경)이 된다.
   useEffect(() => {
     if (type !== "convert") return;
     if (!items.some((it) => String(it.id) === fromItemId)) {
@@ -158,7 +159,7 @@ export default function EntryForm() {
 
   const fromItem = useMemo(() => items.find((it) => String(it.id) === fromItemId), [items, fromItemId]);
   const toItemOptions = useMemo(
-    () => (fromItem ? items.filter((it) => it.category === fromItem.category && it.id !== fromItem.id) : []),
+    () => (fromItem ? items.filter((it) => it.category === fromItem.category) : []),
     [items, fromItem]
   );
   const toItem = useMemo(() => items.find((it) => String(it.id) === toItemId), [items, toItemId]);
@@ -166,9 +167,11 @@ export default function EntryForm() {
   useEffect(() => {
     if (type !== "convert") return;
     if (!toItemOptions.some((it) => String(it.id) === toItemId)) {
-      setToItemId(String(toItemOptions[0]?.id || ""));
+      // 처음 고를 때는 전환 전과 다른 형태를 기본값으로 제안한다.
+      const other = toItemOptions.find((it) => it.id !== fromItem?.id);
+      setToItemId(String(other?.id || toItemOptions[0]?.id || ""));
     }
-  }, [type, toItemOptions, toItemId]);
+  }, [type, toItemOptions, toItemId, fromItem]);
 
   // 전환 목적지: 기본값은 전환 전(소스) 지사/창고와 동일하되, 다른 지사/창고(또는
   // 현장염수분사장치)로 자유롭게 바꿀 수 있다.
@@ -304,8 +307,8 @@ export default function EntryForm() {
           </div>
           {type === "convert" && (
             <p className="text-xs text-slate-500 mt-2">
-              형태를 바꿔서 같은 창고 또는 다른 창고(다른 지사 포함, 현장염수분사장치 포함)로 옮깁니다.
-              전체 톤 환산 총량은 변하지 않습니다.
+              형태를 바꾸거나(예: 톤백 → 개포/염수), 형태는 그대로 둔 채 다른 창고(다른 지사 포함,
+              현장염수분사장치 포함)로만 옮길 수도 있습니다. 전체 톤 환산 총량은 변하지 않습니다.
             </p>
           )}
         </div>
